@@ -16,7 +16,7 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, projectSections, setProjectSections } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
 import { FieldId, fieldKey, initFieldNames, allFieldNames, isTypeRenameTarget, labelKey } from "./fieldNames";
@@ -32,6 +32,9 @@ import { FilterCriteria, ViewOptions, DEFAULT_OPTIONS, DEFAULT_CRITERIA, countFi
 import { ConfirmModal } from "./confirmModal";
 import { readNoteViewOptions, setNoteViewOption, readViewOptions, readNoteCriteria, setNoteCriteria, readCriteria, writeCriteria } from "./pageOptions";
 import { nextInstance, legacyToRRule } from "./recurrence";
+import { parseChecklist, serializeChecklist, setItemDone, resetChecklist } from "./checklist";
+import { planCarry } from "./recurCarry";
+import { removeSection } from "./sections";
 import { todayStr, localStamp, dateOf, timeOf, combineDT } from "./format";
 import { t, setLocale } from "./i18n";
 import { tip } from "./tooltip";
@@ -1823,10 +1826,11 @@ export default class BeautyTasksPlugin extends Plugin {
 
   // ── Aufgaben-Aktionen ──
   /** `due` (optional) schlägt `today`: der Kalender kann damit den angezeigten Tag vorgeben. */
-  openNewTask(project?: string, label?: string, today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null): void {
+  openNewTask(project?: string, label?: string, today = false, status?: TaskStatus, due?: string | null, scheduled?: string | null, section?: string | null): void {
     new TaskModal(this, undefined, project, {
       defaultLabel: label, defaultToday: today, defaultStatus: status,
       seed: (due || scheduled) ? { due: due ?? undefined, scheduled: scheduled ?? undefined } : undefined,
+      defaultSection: section ?? undefined,
     }).open();
   }
   openEditTask(task: Task): void { new TaskModal(this, task).open(); }
@@ -2309,8 +2313,41 @@ export default class BeautyTasksPlugin extends Plugin {
     if (!(f instanceof TFile)) return;
     await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
       this.ensureCanonical(fm);
+      // Der Abschnitt gilt nur in SEINEM Projekt (s. sections.ts) – wer das Projekt wechselt,
+      // landet im neuen „ohne Abschnitt" statt unter einer fremden Kennung.
+      if (this.wikiBase(fm.project) !== project) delete fm.section;
       fm.project = project ? "[[" + project + "]]" : null;
     });
+  }
+
+  /** Aufgabe einem Abschnitt ihres Projekts zuordnen (null = ohne Abschnitt). */
+  async setTaskSection(task: Task, section: string | null): Promise<void> {
+    if ((task.section ?? null) === section) return;
+    const f = this.app.vault.getAbstractFileByPath(task.path);
+    if (!(f instanceof TFile)) return;
+    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      this.ensureCanonical(fm);
+      if (section) fm.section = section; else delete fm.section;
+    });
+  }
+
+  /**
+   * Einen Abschnitt (samt Unterabschnitten) aus einem Projekt entfernen. Seine Aufgaben wandern
+   * in den übergeordneten Abschnitt bzw. auf „ohne Abschnitt" – oder mit `withTasks` in den
+   * Papierkorb (mitsamt Unteraufgaben, wie beim Löschen eines Projekts).
+   */
+  async deleteProjectSection(projectPath: string, id: string, withTasks: boolean): Promise<void> {
+    const { defs, reassign } = removeSection(projectSections(this.app, projectPath), id);
+    const betroffen = this.sectionTasks(projectPath, [...reassign.keys()]);
+    if (withTasks) await this.trashTasks(betroffen);
+    else for (const tk of betroffen) await this.setTaskSection(tk, reassign.get(tk.section ?? "") ?? null);
+    await setProjectSections(this.app, projectPath, defs);
+  }
+
+  /** Hauptaufgaben eines Projekts, die in einem der Abschnitte liegen (jeder Status ausser Papierkorb). */
+  sectionTasks(projectPath: string, ids: string[]): Task[] {
+    const set = new Set(ids);
+    return this.index.allInProject(projectPath).filter((tk) => !tk.parent && !!tk.section && set.has(tk.section) && !isTrashed(tk.status));
   }
   async setTaskStatus(task: Task, status: TaskStatus): Promise<void> {
     if (task.status === status) return;
@@ -2330,27 +2367,78 @@ export default class BeautyTasksPlugin extends Plugin {
       if ("cancelled" in stamps) fm.cancelled = stamps.cancelled;
     });
     // Wiederkehrend + gerade erledigt -> nächste Instanz anlegen.
-    if (nowDone && !wasDone && task.recurrence) {
-      const next = nextInstance(task, todayStr());
-      if (next && (next.due || next.scheduled)) {
-        await createTaskNote(this.app, this.settings, {
-          title: task.title,
-          titleInFrontmatter: task.titleInFm,   // nächste Instanz wie die Vorlage
-          priority: task.priority,
-          project: task.project ? baseName(task.project) : null,
-          labels: [...task.labels],
-          due: next.due,
-          dueTime: task.dueTime,             // Uhrzeit/Dauer in die nächste Instanz übernehmen
-          scheduled: next.scheduled,
-          scheduledTime: task.scheduledTime,
-          duration: task.duration,
-          // Nicht task.recurrence: Bei COUNT traegt die Folgeaufgabe eine um eins verringerte
-          // Regel, sonst liefe die Zaehlung nie ab (s. recurrence.successorRule).
-          recurrence: next.recurrence,
-          recurBasis: task.recurBasis,
-        });
+    if (nowDone && !wasDone && task.recurrence) await this.spawnNextInstance(task);
+  }
+
+  /** Pfade, deren Folgeaufgabe gerade entsteht – gegen einen Doppelklick, der zweimal hier ankäme,
+   *  bevor die erste Runde ihren Nachfolger vermerkt hat. */
+  private spawning = new Set<string>();
+
+  /**
+   * Die nächste Runde einer wiederkehrenden Aufgabe anlegen – samt Beschreibung, Checkliste (offen),
+   * Erinnerungen und frischen Kopien der Unteraufgaben; unerledigte Unteraufgaben der alten Runde
+   * gehen in den Papierkorb. Die Regel dahinter steht in recurCarry.ts.
+   *
+   * Einmal je Runde: Der Nachfolger wird in der alten Notiz vermerkt (`next_instance`). Hakt man
+   * dieselbe Runde wieder auf und erneut ab, entstand früher jedes Mal eine weitere Folgeaufgabe –
+   * mit Unteraufgaben wären es jetzt gleich ganze Bäume.
+   */
+  private async spawnNextInstance(task: Task): Promise<void> {
+    // Vorlagen wiederholen sich nicht – eine abgehakte Vorlagen-Aufgabe ist eine Bearbeitung der
+    // Vorlage, kein Termin. Ohne diese Zeile entstünde eine echte Aufgabe in `Items/`.
+    if (isUnderFolder(task.path, this.settings.templatesFolder)) return;
+    if (this.spawning.has(task.path)) return;
+    const vorher = this.successorOf(task);
+    if (vorher && !isTrashed(vorher.status)) return;
+    const next = nextInstance(task, todayStr());
+    if (!next || !(next.due || next.scheduled)) return;
+    this.spawning.add(task.path);
+    try {
+      const plan = planCarry(task, next, (p) => this.index.children(p));
+      const file = await createTaskNote(this.app, this.settings, {
+        title: task.title,
+        titleInFrontmatter: task.titleInFm,   // nächste Instanz wie die Vorlage
+        description: task.description,
+        priority: task.priority,
+        project: task.project ? baseName(task.project) : null,
+        // Eine wiederkehrende UNTERaufgabe bleibt unter ihrer Elternaufgabe, statt mit der nächsten
+        // Runde unbemerkt zur eigenständigen Aufgabe zu werden.
+        parent: task.parent ? baseName(task.parent) : null,
+        labels: [...task.labels],
+        due: next.due,
+        dueTime: task.dueTime,             // Uhrzeit/Dauer in die nächste Instanz übernehmen
+        scheduled: next.scheduled,
+        scheduledTime: task.scheduledTime,
+        duration: task.duration,
+        // Nicht task.recurrence: Bei COUNT traegt die Folgeaufgabe eine um eins verringerte
+        // Regel, sonst liefe die Zaehlung nie ab (s. recurrence.successorRule).
+        recurrence: next.recurrence,
+        recurBasis: task.recurBasis,
+        reminders: plan.reminders,
+        sortOrder: task.sortOrder,
+        checklist: resetChecklist(task.checklist),
+        section: task.section,   // die nächste Runde bleibt im selben Abschnitt
+      });
+      const alt = this.app.vault.getAbstractFileByPath(task.path);
+      if (alt instanceof TFile) {
+        await this.app.fileManager.processFrontMatter(alt, (fm: Record<string, unknown>) => { fm.next_instance = "[[" + file.basename + "]]"; });
       }
+      // Erst kopieren, dann aufräumen: Der Kopierer überspringt den Papierkorb.
+      if (plan.copied.length) await this.duplicateSubtree(task.path, file.basename, { dates: plan.dates, pick: plan.pick });
+      if (plan.trash.length) await this.trashTasks(plan.trash);
+      if (plan.copied.length) new Notice(t("recur_carried", plan.copied.length));
+    } finally {
+      this.spawning.delete(task.path);
     }
+  }
+
+  /** Die schon angelegte Folgeaufgabe dieser Runde (`next_instance`), falls es sie noch gibt. */
+  private successorOf(task: Task): Task | null {
+    const f = this.app.vault.getAbstractFileByPath(task.path);
+    const raw: unknown = f instanceof TFile ? this.app.metadataCache.getFileCache(f)?.frontmatter?.next_instance : null;
+    const m = typeof raw === "string" ? raw.match(/\[\[([^\]|#]+)/) : null;
+    const dest = m ? this.app.metadataCache.getFirstLinkpathDest(m[1].trim(), task.path) : null;
+    return dest ? this.index.get(dest.path) ?? null : null;
   }
 
   /** Erinnerungen einer Aufgabe setzen (Kontextmenü – das Modal schreibt sie über persist).
@@ -2361,6 +2449,20 @@ export default class BeautyTasksPlugin extends Plugin {
     await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
       this.ensureCanonical(fm);
       if (reminders.length) fm.reminders = reminders; else delete fm.reminders;
+    });
+  }
+
+  /** Einen Punkt der Checkliste abhaken bzw. öffnen (Badge-Popover in Liste und Board – das Modal
+   *  schreibt die ganze Liste über persist). Gelesen wird der FRISCHE Stand der Notiz, nicht der
+   *  des Index: setItemDone prüft, ob an der Stelle noch derselbe Punkt steht. */
+  async setChecklistItem(task: Task, index: number, text: string, done: boolean): Promise<void> {
+    const f = this.app.vault.getAbstractFileByPath(task.path);
+    if (!(f instanceof TFile)) return;
+    await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+      const next = setItemDone(parseChecklist(fm.checklist), index, text, done);
+      if (!next) return;
+      this.ensureCanonical(fm);
+      fm.checklist = serializeChecklist(next);
     });
   }
 
@@ -2382,6 +2484,8 @@ export default class BeautyTasksPlugin extends Plugin {
       recurrence: task.recurrence, recurBasis: task.recurBasis,
       reminders: [...task.reminders],
       parent: task.parent ? baseName(task.parent) : null,
+      checklist: resetChecklist(task.checklist),   // die Kopie startet offen – ihre Punkte auch
+      section: task.section,
     });
     await this.duplicateSubtree(task.path, file.basename);
     new Notice(t("msg_duplicated"));
@@ -2425,7 +2529,7 @@ export default class BeautyTasksPlugin extends Plugin {
     // Kinder der Projektnotiz). Ab der zweiten Ebene gilt wieder die normale Kind-Beziehung –
     // deshalb wird es unten aus den Optionen der Rekursion herausgenommen.
     const quelle = opts.roots ?? from.children(srcParentPath);
-    const kids = subtasksToDuplicate(quelle).filter((k) => !gesehen.has(k.path));
+    const kids = subtasksToDuplicate(quelle).filter((k) => !gesehen.has(k.path) && (opts.pick?.(k) ?? true));
     let order = ORDER_GAP;
     for (const kid of kids) {
       // Verschobene Daten der Vorlage, falls vorhanden – sonst die des Originals (Duplizieren
@@ -2452,6 +2556,10 @@ export default class BeautyTasksPlugin extends Plugin {
         // PROJEKT und nicht zu einer Aufgabe, die sie tragen könnte.
         parent: opts.detachTop ? null : newParentBase,
         sortOrder: order,
+        checklist: resetChecklist(kid.checklist),   // jede Kopie startet offen – ihre Punkte auch
+        // Der Abschnitt reist mit; im Zielprojekt einer Vorlage existiert er nach dem Anwenden
+        // ebenfalls (s. applyTemplate), sonst zählt die Kennung dort schlicht als „ohne Abschnitt".
+        section: kid.section,
       }, opts.target);
       order += ORDER_GAP;
       gesehen.add(kid.path);

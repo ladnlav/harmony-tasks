@@ -1,6 +1,7 @@
 import { Task } from "./types";
 import { isTrashed } from "./statuses";
 import { visibleRows } from "./filterEngine";
+import { serializeChecklist } from "./checklist";
 
 /**
  * Die Signaturen des inkrementellen Nachzeichnens (s. tryPatchList in heuteView).
@@ -53,6 +54,10 @@ export function rowSig(t: Task, look: SigLookup): string {
     // einzige sichtbare Unterschied, wenn sich sonst nichts an der Aufgabe ändert.
     t.completed ?? "", t.cancelled ?? "",
     look.comments(t.path),
+    // Checkliste: das Badge zeigt ihren Fortschritt, das Popover ihre Punkte – beides hängt an der Zeile.
+    serializeChecklist(t.checklist).join("\n"),
+    // Abschnitt: bestimmt, unter welcher Abschnitts-Überschrift der Projektseite die Zeile steht.
+    t.section ?? "",
     // Mit Trennzeichen verbunden statt stumpf aneinandergehängt: Sonst ergäben Titel "ab"
     // mit Beschreibung "c" und Titel "a" mit Beschreibung "bc" dieselbe Signatur.
   ].join(SEP);

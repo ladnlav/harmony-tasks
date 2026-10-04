@@ -25,6 +25,11 @@ import { renderCalendar, calendarDayAnchor, tryPatchCalendar, activateEventOpen,
 import { DayEvent, bucketEvents, addDays, addMonths } from "./calendarModel";
 import { renderCheck, installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation, menuHoldPath } from "./taskMenu";
+import { openChecklistPopover } from "./checklistView";
+import { renderOverview } from "./overviewBlock";
+import { SectionPage, effectiveSection, sectionMenu, createSection, editSection } from "./sectionView";
+import { SectionGroup, groupBySection, orderedSections, sectionLabel } from "./sections";
+import { wireLinkClicks } from "./mdLinks";
 import { PRIOS } from "./taskModal";
 import { isOpen, isDone, isTrashed, boardStatuses, statusLabel, statusTint, firstOpenStatus, StatusKind } from "./statuses";
 import { t, getLocale, projectDisplayName } from "./i18n";
@@ -474,21 +479,37 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   // Im Eingang neue Aufgaben OHNE Projekt anlegen (Eingang = kein Projekt), sonst im Projekt.
   addBar(top, plugin, () => plugin.openNewTask(isInbox ? undefined : name, undefined, false, undefined, addDue(ctx)));
 
+  // Überblick (Fortschritt, nächste Termine, Infos aus der Projektnotiz) über den Aufgaben. Nicht im
+  // Eingang (er ist keine Liste mit Notiz) und nicht im Kalender: Dessen Abgleich (tryPatchCalendar)
+  // kennt den Block nicht – er bliebe dort nach dem Abhaken auf dem alten Stand stehen.
+  const overview = !isInbox && meta && plugin.settings.showProjectOverview && ctx.opts.layout !== "calendar"
+    ? renderOverview(root, ctx, projectPath, meta.name) : null;
+
+  // Abschnitte (s. sections.ts). In der LISTE ist „keine Gruppierung" bei einem Projekt mit
+  // Abschnitten die Gliederung nach Abschnitten – wie „Heute" ohne Wahl nach Datum gliedert. Sonst
+  // wären frisch angelegte Abschnitte unsichtbar, bis man die Gruppierung findet. Im Board bleibt
+  // „keine" die Status-Spalten: Dort ändert sich durch Abschnitte nichts, was man nicht gewählt hat.
+  const sectionPage: SectionPage | undefined = meta ? { path: projectPath, name, defs: meta.sections } : undefined;
+  const opts: ViewOptions = sectionPage && sectionPage.defs.length && ctx.opts.layout === "list" && ctx.opts.group === "none"
+    ? { ...ctx.opts, group: "section" } : ctx.opts;
+  const zeigtAbschnitte = !!sectionPage && sectionPage.defs.length > 0 && opts.layout === "list" && opts.group === "section";
+
   // Eingang = alle „nicht einsortierten" Aufgaben (kein Projekt ODER Verweis auf Inbox).
   // ctx.filter davor: der Ansichtsfilter der Seite (Anzeige-Panel), siehe PageCtx.filter.
   const source = (): Task[] => ctx.filter(isInbox
     ? plugin.index.inbox()
     : plugin.index.all().filter((t) => t.project != null && baseName(t.project) === name));
   const tasks = source();
-  if (!tasks.length) {
+  // Ein Projekt, das nur Abschnitte hat, zeigt sie – leer, aber mit „+ Aufgabe" je Abschnitt.
+  if (!tasks.length && !zeigtAbschnitte) {
     if (hasCriteria(ctx.crit)) filterEmptyState(root, ctx);
     else if (isInbox) emptyState(root, "inbox", "empty_no_inbox_tasks");
     else if (isArea) emptyState(root, "circle-small", "empty_no_area_tasks");
     else emptyState(root, "folder", "empty_no_project_tasks");
     return;
   }
-  renderPageBody(root, ctx, source, ctx.opts, today, isInbox ? { project: null } : { project: name },
-    () => noteHeadSig(plugin, isInbox ? null : projectPath));
+  renderPageBody(root, ctx, source, opts, today, isInbox ? { project: null } : { project: name, sectionPage },
+    () => noteHeadSig(plugin, isInbox ? null : projectPath), overview ? () => overview.paint() : undefined, sectionPage);
 }
 
 /** Label-Board: alle Aufgaben mit einem Label, nach Status/Datum gruppiert (wie Projekt-Board). */
@@ -532,7 +553,7 @@ function labelOrderOf(plugin: BeautyTasksPlugin, tasks: Task[], group: FilterGro
  *  `source` liefert die Aufgaben der Seite – als Funktion, damit der Kalender sie beim
  *  inkrementellen Nachzeichnen frisch holen kann, ohne die Seiten-Logik zu kennen. */
 function renderPageBody(root: HTMLElement, ctx: PageCtx, source: () => Task[], opts: ViewOptions, today: string,
-  add: BoardAdd, headSig: () => string): void {
+  add: BoardAdd, headSig: () => string, onRepaint?: () => void, sectionPage?: SectionPage): void {
   const plugin = ctx.plugin;
   const tasks = source();
   const open = tasks.filter((t) => isOpen(t.status));
@@ -563,7 +584,10 @@ function renderPageBody(root: HTMLElement, ctx: PageCtx, source: () => Task[], o
    * würden über kurz oder lang auseinanderlaufen und der Patch-Pfad zeigte etwas anderes als
    * der Neuaufbau.
    */
-  const plan = (): { title: string; tasks: Task[]; hosts: Set<string>; ownRow?: (t: Task) => boolean; collapsible: boolean }[] => {
+  type PlanEntry = { title: string; tasks: Task[]; hosts: Set<string>; ownRow?: (t: Task) => boolean; collapsible: boolean; psec?: SectionGroup<Task> };
+  // Abschnitte der Projektseite: nur in der Liste und nur, wenn die Seite sie mitbringt.
+  const bySection = opts.group === "section" && !!sectionPage;
+  const plan = (): PlanEntry[] => {
     const all = source();
     const offen = all.filter((tk) => isOpen(tk.status));
     const fertig = all.filter((tk) => isDone(tk.status)).sort((a, b) => (b.completed ?? "").localeCompare(a.completed ?? ""));
@@ -575,9 +599,19 @@ function renderPageBody(root: HTMLElement, ctx: PageCtx, source: () => Task[], o
     // Die Erledigt-ANSICHT macht es seit 1.20.3 schon so – hier war es uebersehen.
     const openHosts = nestingHosts(plugin, offen, subs);
     const doneHosts = nestingHosts(plugin, fertig, subs);
-    const out: { title: string; tasks: Task[]; hosts: Set<string>; ownRow?: (tk: Task) => boolean; collapsible: boolean }[] = [];
-    for (const g of groupTasks(sorted, opts.group, today, opts, labelOrderOf(plugin, sorted, opts.group))) {
-      if (visibleRows(g.tasks, openHosts, ownRow).length) out.push({ title: g.title, tasks: g.tasks, hosts: openHosts, ownRow, collapsible: false });
+    const out: PlanEntry[] = [];
+    if (bySection && sectionPage) {
+      // Leere Abschnitte bleiben stehen – dort legt man die erste Aufgabe an. Gleichnamige
+      // Abschnitte stören den Abgleich nicht: planDiff vergleicht nach Position, und jede Änderung
+      // an der Gliederung baut ohnehin neu (die Abschnitte stehen in der Kopf-Signatur).
+      const get = (p: string): Task | undefined => plugin.index.get(p);
+      for (const g of groupBySection(sorted, sectionPage.defs, (tk) => effectiveSection(tk, get))) {
+        out.push({ title: g.def ? g.def.name : t("sec_no_section"), tasks: g.tasks, hosts: openHosts, ownRow, collapsible: false, psec: g });
+      }
+    } else {
+      for (const g of groupTasks(sorted, opts.group, today, opts, labelOrderOf(plugin, sorted, opts.group))) {
+        if (visibleRows(g.tasks, openHosts, ownRow).length) out.push({ title: g.title, tasks: g.tasks, hosts: openHosts, ownRow, collapsible: false });
+      }
     }
     if (opts.showDone && visibleRows(fertig, doneHosts).length) out.push({ title: t("sec_done"), tasks: fertig, hosts: doneHosts, collapsible: true });
     return out;
@@ -588,7 +622,12 @@ function renderPageBody(root: HTMLElement, ctx: PageCtx, source: () => Task[], o
   const outer = recording;
   recording = rec;
   try {
-    for (const s of plan()) section(root, ctx, s.title, s.tasks, today, s.collapsible, false, s.hosts, [], "", s.ownRow);
+    for (const s of plan()) {
+      const head = section(root, ctx, s.title, s.tasks, today, s.collapsible, false, s.hosts, [], "", s.ownRow);
+      if (s.psec && sectionPage) decorateProjectSection(head, ctx, sectionPage, s.psec);
+    }
+    // Der Platz für den nächsten Abschnitt: am Ende der Liste, wie „+ Aufgabe" am Anfang.
+    if (sectionPage && (bySection || opts.group === "none")) addSectionRow(root, ctx, sectionPage);
   } finally {
     recording = outer;
   }
@@ -610,10 +649,15 @@ function renderPageBody(root: HTMLElement, ctx: PageCtx, source: () => Task[], o
       rec[i].paintRows(visibleRows(s.tasks, s.hosts, s.ownRow));
       rec[i].sig = sectionSig(s.tasks, sigLookup(ctx), { present: s.hosts, ownRow: s.ownRow });
     }
+    // Was über den Sektionen steht und selbst nachzieht (Projekt-Überblick, s. overviewBlock.ts).
+    onRepaint?.();
     return true;
   };
   const host = root.parentElement;
-  if (host) listMounts.set(host, { headSig, sig: frameSig(ctx, opts, headSig()), root, sections: rec, repaint });
+  // Rahmen-Signatur mit den Optionen des TABS (ctx.opts), nicht mit `opts`: tryPatchList vergleicht
+  // gegen ctx.opts, und die Projektseite reicht hier eine abgeleitete Fassung herein („keine"
+  // Gruppierung -> Abschnitte). Mit `opts` passte die Signatur dort nie, und jede Änderung baute neu.
+  if (host) listMounts.set(host, { headSig, sig: frameSig(ctx, ctx.opts, headSig()), root, sections: rec, repaint });
 }
 
 /** Filter-Board: die Treffer eines gespeicherten Filters, sortiert/gruppiert nach seinen
@@ -724,7 +768,7 @@ function sortColumn(list: Task[], kind: StatusKind, sort: FilterSort, dir: SortD
 // ── Generisches Spalten-Modell: das Board folgt der Gruppierung ──
 // Fundament für Status/Label/… – aktuell freigeschaltet: Status (Default) und Label.
 /** Basis-Kontext fürs „+ Aufgabe" einer Spalte (die Spalten-Dimension setzt die Spalte selbst). */
-interface BoardAdd { project?: string | null; label?: string; today?: boolean; }
+interface BoardAdd { project?: string | null; label?: string; today?: boolean; sectionPage?: SectionPage; }
 interface BoardColumn {
   id: string;                                   // stabile Spalten-ID (Status-ID bzw. Label-Name / NO_LABEL)
   title: string;
@@ -781,6 +825,36 @@ function priorityColumns(plugin: BeautyTasksPlugin, add: BoardAdd): BoardColumn[
     onDrop: (tk: Task) => { if (eff(tk.priority) !== p.value) void plugin.setTaskPriority(tk, p.value); },
     onAdd: () => plugin.openNewTask(add.project ?? undefined, add.label, add.today ?? false),
   }));
+}
+
+const NO_SECTION = "\u0000nosection";   // Sentinel-ID der Spalte „Ohne Abschnitt"
+
+/** Abschnitts-Spalten (Gruppierung = Abschnitt, nur Projektseite): eine Spalte je Abschnitt in der
+ *  Reihenfolge der Projektnotiz, Unterabschnitte als „Abschnitt › Unterabschnitt". Ziehen setzt den
+ *  Abschnitt; eine Unteraufgaben-Karte bleibt beim Abschnitt ihrer Hauptaufgabe (s. effectiveSection). */
+function sectionColumns(plugin: BeautyTasksPlugin, cards: Task[], add: BoardAdd): BoardColumn[] {
+  const page = add.sectionPage!;
+  const known = new Set(page.defs.map((d) => d.id));
+  const get = (p: string): Task | undefined => plugin.index.get(p);
+  const eff = (tk: Task): string | null => { const s = effectiveSection(tk, get); return s && known.has(s) ? s : null; };
+  const cols: BoardColumn[] = [];
+  if (cards.some((tk) => eff(tk) === null)) {
+    cols.push({
+      id: NO_SECTION, title: t("sec_no_section"), tint: "var(--text-muted)", kind: "open",
+      has: (tk) => eff(tk) === null,
+      onDrop: (tk) => { if (!tk.parent && tk.section) void plugin.setTaskSection(tk, null); },
+      onAdd: () => plugin.openNewTask(page.name, add.label, add.today ?? false),
+    });
+  }
+  for (const e of orderedSections(page.defs)) {
+    cols.push({
+      id: e.def.id, title: sectionLabel(page.defs, e.def.id) ?? e.def.name, tint: "var(--bt-nav-project)", kind: "open",
+      has: (tk) => eff(tk) === e.def.id,
+      onDrop: (tk) => { if (!tk.parent && tk.section !== e.def.id) void plugin.setTaskSection(tk, e.def.id); },
+      onAdd: () => plugin.openNewTask(page.name, add.label, add.today ?? false, undefined, null, null, e.def.id),
+    });
+  }
+  return cols;
 }
 
 /** Projekt-Spalten (Gruppierung = Projekt): eine Spalte je vorkommendem Projekt/Bereich (+ „Kein
@@ -1083,10 +1157,12 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
   // Karten sind flach (keine Verschachtelung) -> kein skip nötig, Doppelung kann nicht entstehen.
   const cards = visibleRows(tasks, nestingHosts(plugin, tasks, subs), agendaOwnRow(opts.group));
   // Gruppierungs-Schlüssel (stabil) für die board-eigene Spalten-Reihenfolge. Priorität bleibt fest.
+  const bySection = opts.group === "section" && !!add.sectionPage;
   const groupKey = opts.group === "label" ? "label" : opts.group === "priority" ? "priority" : opts.group === "project" ? "project"
-    : opts.group === "date" || opts.group === "deadline" ? opts.group : "status";
+    : opts.group === "date" || opts.group === "deadline" ? opts.group : bySection ? "section" : "status";
   // Nicht umsortierbar, wo die Reihenfolge fest ist: Priorität (P1–P4) und Datum (chronologisch).
-  const reorderable = groupKey !== "priority" && groupKey !== "date" && groupKey !== "deadline";
+  // Abschnitte ebenso – ihre Reihenfolge ist die der Projektnotiz (Menü „Nach oben/unten").
+  const reorderable = groupKey !== "priority" && groupKey !== "date" && groupKey !== "deadline" && groupKey !== "section";
   // Spalten aus den SICHTBAREN Karten ableiten: sonst entstünde eine Label-/Projekt-Spalte für
   // eine Unteraufgabe, die im kompakten Modus gar keine Karte hat – eine leere Spalte ohne Grund.
   const baseCols = opts.group === "label" ? labelColumns(plugin, cards, add)
@@ -1094,7 +1170,8 @@ function renderKanbanBoard(root: HTMLElement, ctx: PageCtx, tasks: Task[], today
       : opts.group === "project" ? projectColumns(plugin, cards, add)
         : opts.group === "date" ? dateColumns(plugin, cards, today, "due", add)
           : opts.group === "deadline" ? dateColumns(plugin, cards, today, "scheduled", add)
-            : statusColumns(plugin, add);
+            : bySection ? sectionColumns(plugin, cards, add)
+              : statusColumns(plugin, add);
   const cols = reorderable ? applyColumnOrder(baseCols, plugin.settings.boardColumnOrder?.[groupKey]) : baseCols;
   const board = root.createDiv({ cls: "bt-kanban" });
   const driveScroll = attachEdgeAutoscroll(board);
@@ -1477,6 +1554,99 @@ function section(parent: HTMLElement, ctx: PageCtx, title: string, tasks: Task[]
   return head;
 }
 
+/**
+ * Eine gezeichnete Sektion zum ABSCHNITT der Projektseite machen (s. sections.ts): Einklappen,
+ * Menü (⋯ und Rechtsklick), Beschreibung unter dem Kopf, „+ Aufgabe" am Ende, Ablage für Aufgaben.
+ *
+ * Bewusst als Nachbearbeitung von section() statt als zweite Sektions-Funktion: Zeilen, Nachladen,
+ * Aushängen und der Abgleich (tryPatchList) bleiben damit genau dieselben wie überall.
+ */
+function decorateProjectSection(head: HTMLElement, ctx: PageCtx, page: SectionPage, g: SectionGroup<Task>): void {
+  const plugin = ctx.plugin;
+  const sec = head.parentElement;
+  if (!sec) return;
+  sec.addClass("bt-psec");
+  // „Ohne Abschnitt": nur Ablage – wer eine Aufgabe hierher zieht, nimmt ihr den Abschnitt.
+  if (!g.def) {
+    sec.addClass("is-loose");
+    attachTaskDrop(head, plugin, (task) => { if (!task.parent && task.section) void plugin.setTaskSection(task, null); });
+    return;
+  }
+  const def = g.def;
+  sec.dataset.section = def.id;
+  if (def.parent) { sec.addClass("is-sub"); sec.dataset.parentSection = def.parent; }
+  head.addClass("bt-psec-head");
+
+  // Einklappen – geräte-lokal (wie die Seitenleiste). Ein Abschnitt nimmt seine Unterabschnitte mit;
+  // die stehen als Geschwister DANACH im DOM und werden deshalb über ihr data-Attribut gefunden.
+  const key = "sec:" + page.path + "#" + def.id;
+  const zu = (): boolean => plugin.isNavCollapsed(key);
+  if (def.parent && plugin.isNavCollapsed("sec:" + page.path + "#" + def.parent)) sec.addClass("is-parent-collapsed");
+  const chev = head.createSpan({ cls: "bt-psec-chev" });
+  head.prepend(chev);   // vor den Titel
+  const apply = (): void => {
+    sec.toggleClass("is-collapsed", zu());
+    setIcon(chev, zu() ? "chevron-right" : "chevron-down");
+    head.setAttr("aria-expanded", String(!zu()));
+    if (!def.parent) {
+      sec.parentElement?.querySelectorAll<HTMLElement>(".bt-psec.is-sub").forEach((el) => {
+        if (el.dataset.parentSection === def.id) el.toggleClass("is-parent-collapsed", zu());
+      });
+    }
+  };
+  apply();
+  head.setAttr("role", "button");
+  head.setAttr("tabindex", "0");
+  const toggle = (): void => { void plugin.setNavCollapsed(key, !zu()).then(apply); };
+  head.onclick = (e) => { if (!(e.target as HTMLElement).closest(".bt-psec-menu")) toggle(); };
+  head.onkeydown = (e) => { if (e.target === head && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(); } };
+
+  // Menü: ⋯ am Kopf und Rechtsklick auf den Kopf.
+  const menuBtn = head.createSpan({ cls: "bt-psec-menu", attr: { role: "button", tabindex: "0" } });
+  tip(menuBtn, t("more_actions"));
+  setIcon(menuBtn, "more-horizontal");
+  const openMenu = (e: MouseEvent): void => { e.preventDefault(); e.stopPropagation(); sectionMenu(plugin, page, def).showAtMouseEvent(e); };
+  menuBtn.onclick = openMenu;
+  menuBtn.onkeydown = (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault(); e.stopPropagation();
+    const r = menuBtn.getBoundingClientRect();
+    sectionMenu(plugin, page, def).showAtPosition({ x: r.left, y: r.bottom });
+  };
+  head.oncontextmenu = openMenu;
+
+  // Eine Aufgabe auf den Kopf ziehen = in diesen Abschnitt verschieben.
+  attachTaskDrop(head, plugin, (task) => { if (!task.parent && task.section !== def.id) void plugin.setTaskSection(task, def.id); });
+
+  // Beschreibung: Markdown, Links klickbar; ein Klick daneben öffnet den Bearbeiten-Dialog.
+  if (def.description.trim()) {
+    const desc = sec.createDiv({ cls: "bt-psec-desc markdown-rendered" });
+    head.after(desc);
+    if (ctx.titleComp) void MarkdownRenderer.render(plugin.app, def.description, desc, page.path, ctx.titleComp);
+    else desc.setText(def.description);
+    wireLinkClicks(desc, plugin.app, page.path);
+    desc.onclick = (e) => { if (!(e.target as HTMLElement).closest("a")) editSection(plugin, page.path, def); };
+  }
+
+  // „+ Aufgabe" am Ende des Abschnitts – legt direkt hier an.
+  const add = sec.createDiv({ cls: "bt-psec-add", attr: { role: "button", tabindex: "0" } });
+  add.createSpan({ cls: "bt-add-icon" });
+  add.createSpan({ text: t("btn_add_task") });
+  const neu = (): void => plugin.openNewTask(page.name, undefined, false, undefined, null, null, def.id);
+  add.onclick = neu;
+  add.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); neu(); } };
+}
+
+/** „+ Abschnitt hinzufügen" am Ende der Projektliste. */
+function addSectionRow(root: HTMLElement, ctx: PageCtx, page: SectionPage): void {
+  const row = root.createDiv({ cls: "bt-psec-new", attr: { role: "button", tabindex: "0" } });
+  row.createSpan({ cls: "bt-add-icon" });
+  row.createSpan({ text: t("psec_add") });
+  const neu = (): void => createSection(ctx.plugin, page.path);
+  row.onclick = neu;
+  row.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); neu(); } };
+}
+
 /** „Verschieben" rechts im Kopf der Überfällig-Sektion (Sammel-Aktion auf ALLE Aufgaben der
  *  Sektion). Der Picker startet bewusst OHNE Vorbelegung: 15 überfällige Aufgaben haben 15
  *  verschiedene Daten – ein vorausgewählter Tag müsste eines davon erfinden und würde
@@ -1653,13 +1823,18 @@ function noteHeadSig(plugin: BeautyTasksPlugin, path: string | null): string {
   if (!path) return "";
   const f = plugin.app.vault.getAbstractFileByPath(path);
   const fm = f instanceof TFile ? plugin.app.metadataCache.getFileCache(f)?.frontmatter : null;
-  return [path, fm?.description ?? "", fm?.color ?? "", fm?.status ?? "", fm?.nav_hidden ?? ""].join("~");
+  // Die Abschnitte gehören dazu: Jede Änderung an der Gliederung (neu, umbenannt, verschoben,
+  // Beschreibung) baut die Seite neu – der Abgleich zeichnet nur Zeilen, keine Abschnittsköpfe.
+  return [path, fm?.description ?? "", fm?.color ?? "", fm?.status ?? "", fm?.nav_hidden ?? "", JSON.stringify(fm?.sections ?? null)].join("~");
 }
 
 /** Einstellungen, die in JEDER Zeile stecken (und beim Patchen nicht neu gelesen würden). */
 function settingsSig(plugin: BeautyTasksPlugin): string {
   const s = plugin.settings;
-  return [s.showDescriptionInList, s.metaTheme, s.chipsIconsOnly, s.locale].join(",");
+  // Auch die Seiten-Schalter (Projektbeschreibung, Überblick): Sie blenden Blöcke über den
+  // Sektionen ein oder aus, und die zeichnet der Abgleich nicht – ohne sie blieb ein Umschalten
+  // in den Einstellungen bis zum nächsten vollen Neuaufbau unsichtbar.
+  return [s.showDescriptionInList, s.metaTheme, s.chipsIconsOnly, s.locale, s.showProjectDescription, s.showProjectOverview].join(",");
 }
 
 /** Versucht, die bereits gezeichnete Liste in `c` nur nachzufüllen. true = erledigt,
@@ -1922,6 +2097,18 @@ function renderTask(list: HTMLElement, ctx: PageCtx, task: Task, today: string, 
         badge.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(e); } };
       }
     }
+  }
+  // Checklisten-Badge: Fortschritt „erledigt/gesamt"; ein Klick öffnet die Punkte zum Abhaken –
+  // in der Liste wie auf der Karte, ohne das Aufgaben-Modal.
+  if (plan.checklist) {
+    const { done, total } = plan.checklist;
+    const badge = meta.createSpan({ cls: "bt-cl-badge" + (done === total ? " is-complete" : ""), attr: { role: "button", tabindex: "0" } });
+    tip(badge, t("cl_progress", done, total));
+    setIcon(badge.createSpan({ cls: "bt-cl-badge-ic" }), "list-todo");
+    badge.createSpan({ cls: "bt-cl-badge-n", text: done + "/" + total });
+    const open = (e: Event): void => { e.stopPropagation(); openChecklistPopover(plugin, task, badge); };
+    badge.onclick = open;
+    badge.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(e); } };
   }
 
   if (trash) {

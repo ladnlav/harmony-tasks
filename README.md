@@ -61,6 +61,10 @@ Every sidebar entry has a **right-click menu** (go to its note, edit, recolor, c
 
 **Projects vs. Areas.** Organize tasks into **projects** or **areas** — two independent kinds, each with its own tab in the ListManager and its own `+` in the sidebar, so you can **create, archive and delete either one directly**. An **Area** is a fixed section that keeps its own place in the sidebar — ideal for long-running responsibilities that should never be “finished” — while a **project** is for work that eventually wraps up. You can convert one into the other at any time.
 
+**Sections & subsections.** Split a project or area into **sections** (and one level of **subsections**) — parts of the project, not tasks. Each section has a name, an optional **Markdown description** shown under its heading, its own tasks and its own **+ Add task**. Collapse a section, reorder or rename it from its **⋯ menu**, drag a task onto a section heading to move it there, or use **Move to section** in the task's context menu. The first section is created from the project's menu (or **+ Add section** at the end of the list). On the board, sections can be the columns (*Display → Group → Section*). Deleting a section moves its tasks up one level — or, if you tick the box, to the trash.
+
+**Project overview.** Above the tasks of every project and area sits a collapsible **overview**: progress (*12/18 · 67 %*), counters for overdue, today, the next 7 days and undated tasks (click one to filter the page), the **next dates and deadlines**, and the **info & links** from the project note — rendered, with clickable links, and editable right there. Turn it off under *Settings → Overview on project pages*.
+
 ### Saved filters & smart views
 Build custom queries — by project/area, label, priority, status, date range and more — and **save them to the sidebar** as reusable smart views, each with its own color. Per-view display options (layout, grouping, sorting, show completed) are remembered.
 
@@ -95,8 +99,9 @@ Each task can carry:
 - A separate **deadline / scheduled** date & time. A task with only a deadline still shows up in Today and Upcoming when it comes due — one rule, no task hiding because you filled in the “wrong” date field. Deadlines are written as a countdown (*“in 3 days”*) and coloured by distance.
 - **Project** and **Area** assignment.
 - **Sub-tasks** — nest tasks under a parent, drawn with clean connector lines. Choose per view how they appear: compact (as progress on the parent), indented beneath it, or standing on their own.
+- **Checklists** — lightweight check-off items inside a task (no separate notes, unlike sub-tasks). Add them in the task editor — even before the task exists — reorder by drag, paste several lines at once; lists and board cards show the progress (*☑ 2/5*), and a click on it lets you tick items without opening the task.
 - **Labels** (`#tags`).
-- **Recurrence** — “every day / week / 3 months …”, repeating from either the **due date** or the **completion date**.
+- **Recurrence** — “every day / week / 3 months …”, **specific weekdays** (“every Tuesday and Thursday”, weekdays, weekends), monthly by date or by weekday (“last Friday of the month”), with an optional end date or number of times — repeating from either the **due date** or the **completion date**. **Customize…** in the recurrence menu opens an editor with a preview of the next dates. When a recurring task is completed, the next occurrence keeps its **description, reminders, checklist (unticked) and fresh copies of its sub-tasks**, with their dates moved along; unfinished sub-tasks of the completed occurrence go to the trash.
 - **Reminders** — get notified before or at a task’s time (see below).
 - A **Markdown description**, a **timestamped comment log**, and **file/image attachments** (see below).
 
@@ -109,7 +114,7 @@ Add tasks at the speed of thought. The quick-add modal understands plain sentenc
 
 **Dates and times** are understood in your interface language — English, German, Spanish, Portuguese, French, Italian, Russian, Chinese and Japanese. English keywords work everywhere, alongside your own, so `Escribir informe tomorrow` is fine too. Turkish has no date parser yet; there, English keywords are the way.
 
-Everything else in the table below is the same in every language: **recurrence** is written in English or German (`every day`, `jeden Tag`), and `p1`, `#label` and `@project` are symbols, not words.
+Everything else in the table below is the same in every language: **recurrence** is written in English, German or Russian (`every day`, `jeden Tag`, `каждый день`), and `p1`, `#label` and `@project` are symbols, not words.
 
 Recognized tokens are stripped from the title automatically:
 
@@ -117,7 +122,7 @@ Recognized tokens are stripped from the title automatically:
 | --- | --- |
 | **Date** | `today`, `tomorrow`, `day after tomorrow`, `in 3 days`, `next week`, `next monday`, a bare weekday (`friday`), `3 Jul` / `July 3rd`, `20.06.2026`, `06/20/2026`, `2026-06-20` |
 | **Time** | `at 7:30`, `7:30`, `7pm`, `at 7`, `um 20.15`, `um 2015` (four digits and the dot form need `at`/`um` in front — otherwise `Sort photos from 2015` would become a time) |
-| **Recurrence** | `every day`, `daily`, `every week`, `weekly`, `every 3 days`, `every 2 weeks`, `every 3 months`, `yearly` |
+| **Recurrence** | `every day`, `daily`, `every week`, `weekly`, `every 3 days`, `every 2 weeks`, `every 3 months`, `yearly`, `every monday and thursday`, `every 2 weeks on tue and thu`, `weekdays`, `last friday of the month`, `on the 15th of each month` — and in Russian `каждый вторник и четверг`, `по будням`, `раз в неделю`, `15 числа каждого месяца` |
 | **Priority** | `p1`–`p4` or `!1`–`!4` |
 | **Label** | `#work` — any label, created on the fly |
 | **Project** | `@project` — existing projects and areas only |
@@ -199,15 +204,23 @@ due: 2026-07-10T09:00
 scheduled: 2026-07-08
 duration: 30            # minutes
 project: "[[Website Relaunch]]"
+section: s-k3j2         # section of the project (id from the project note's `sections`)
 parent: "[[Draft the outline]]"
 labels: [work, writing]
-recurrence: every week
+recurrence: FREQ=WEEKLY;BYDAY=TU,TH
 recur_basis: due        # due | done
 reminders: ["-30m", "2026-07-10T08:00"]
 created: 2026-07-04
 description: Free-form text shown under the title
+checklist:
+  - "[x] Collect screenshots"
+  - "[ ] Proofread"
 ---
 ```
+
+Checklist items are plain strings with `[ ]` / `[x]` in front — keep the quotes when you edit
+them by hand, YAML would read an unquoted `[ ]` as a list. A completed recurring task records its
+successor in `next_instance: "[[…]]"`, so ticking the same occurrence twice never creates a second one.
 
 The body is yours — BeautyTasks keeps its own notes (comments, attachments) in a collapsible
 `###### BeautyTasks Details-Logbuch` section at the bottom and leaves everything above it alone.
@@ -268,7 +281,9 @@ Projects, areas and saved filters are Markdown notes too — and **their body be
 
 Reach it from the **context menu** of the sidebar entry, or from the **⋯ menu** on the project page → **Open project note** (or area / filter note). It is worth opening: because every task points at it with `project: "[[Name]]"`, that note is already where Obsidian's backlinks and graph converge.
 
-A **description** in the frontmatter is shown above the task list (switch it off under Settings → *Show description on project pages*) — the one-line answer to “what is this for”. Set it in the project's edit dialog; the long version goes in the body.
+A **description** in the frontmatter is shown above the task list (switch it off under Settings → *Show description on project pages*) — the one-line answer to “what is this for”. Set it in the project's edit dialog; the long version goes in the body. The body is also what the **project overview** shows as *Info & links* — editing it there writes to this note, and only when you press *Save*.
+
+**Sections** live in the project note's frontmatter, too. Tasks point at them by id (`section: s-k3j2`), so renaming a section touches no task:
 
 ```yaml
 ---
@@ -276,6 +291,13 @@ type: project
 id: p-8f3a1
 description: Everything for the September launch
 color: "#4caf50"
+sections:
+  - id: s-k3j2
+    name: Design
+    description: Mockups and the UI kit
+  - id: s-p9x1
+    name: Wireframes
+    parent: s-k3j2
 ---
 
 Your own notes start right here.
@@ -406,7 +428,7 @@ Assign hotkeys to any of these under **Settings → Hotkeys**.
 - **Statuses** — add, rename, reorder, recolor and re-icon your workflow statuses.
 - **Colors** — a muted or a colorful meta style, or set every accent yourself.
 - **Text size** — scale task text, sidebar entries and headings independently.
-- **Icons-only chips**, **description preview in lists**, and the **description on project pages**.
+- **Icons-only chips**, **description preview in lists**, the **description on project pages**, and the **overview on project pages**.
 - **Google Calendar** — connect your account, choose the target calendar and sync options (see above).
 - **Import & Export** — JSON backup/restore, plus import from TaskNotes or the Tasks/Lists format.
 

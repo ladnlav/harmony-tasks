@@ -2,8 +2,10 @@ import { App, TFile, normalizePath } from "obsidian";
 import type BeautyTasksPlugin from "./main";
 import { Task } from "./types";
 import { AnchorMode, planTemplateDates } from "./templatePlan";
-import { baseName, createProjectNote, createTaskNote, EditScope, ensureFolder, NoteTarget, setTaskTitle, slugify } from "./taskService";
+import { baseName, createProjectNote, createTaskNote, EditScope, ensureFolder, NoteTarget, setTaskTitle, slugify, projectSections, setProjectSections, listProjectsAndAreas } from "./taskService";
 import { firstOpenStatus, isTrashed } from "./statuses";
+import { resetChecklist } from "./checklist";
+import { SectionDef, mergeSections, readSections, writeSections } from "./sections";
 
 /**
  * Vorlagen: speichern und anwenden.
@@ -96,6 +98,12 @@ function rootMeta(app: App, path: string): { kind: TemplateKind; hidden: boolean
   return { kind: fm?.[TEMPLATE_OF] === "project" ? "project" : "task", hidden: !!fm?.nav_hidden };
 }
 
+/** Abschnitte, die eine Projektvorlage an ihrer Wurzel trägt (s. saveProjectAsTemplate). */
+function templateSections(app: App, rootPath: string): SectionDef[] {
+  const f = app.vault.getAbstractFileByPath(rootPath);
+  return f instanceof TFile ? readSections(app.metadataCache.getFileCache(f)?.frontmatter?.sections) : [];
+}
+
 /** Vorlage in der Seitenleiste ein-/ausblenden. */
 export async function setTemplateHidden(app: App, path: string, hidden: boolean): Promise<void> {
   const f = app.vault.getAbstractFileByPath(path);
@@ -137,6 +145,8 @@ export async function saveAsTemplate(plugin: BeautyTasksPlugin, task: Task, kind
     labels: [...task.labels],
     recurrence: task.recurrence, recurBasis: task.recurBasis,
     reminders: [...task.reminders],
+    // Eine Vorlage merkt sich, WAS abzuhaken ist – nicht, was bei dieser einen Runde schon erledigt war.
+    checklist: resetChecklist(task.checklist),
   }, target);
 
   await plugin.app.fileManager.processFrontMatter(root, (fm: Record<string, unknown>) => { fm[TEMPLATE_OF] = kind; });
@@ -165,7 +175,13 @@ export async function saveProjectAsTemplate(plugin: BeautyTasksPlugin, projectPa
   const root = await createTaskNote(plugin.app, plugin.settings, {
     title: name, description, status: firstOpenStatus(), project: null,
   }, target);
-  await plugin.app.fileManager.processFrontMatter(root, (fm: Record<string, unknown>) => { fm[TEMPLATE_OF] = "project"; });
+  // Die Gliederung des Projekts reist an der Wurzel mit; die Aufgaben behalten ihre `section`-
+  // Kennungen (duplicateSubtree), und die gelten beim Anwenden im neuen Projekt wieder.
+  const sections = projectSections(plugin.app, projectPath);
+  await plugin.app.fileManager.processFrontMatter(root, (fm: Record<string, unknown>) => {
+    fm[TEMPLATE_OF] = "project";
+    if (sections.length) fm.sections = writeSections(sections);
+  });
 
   // Die Aufgaben DES Projekts, die keine Unteraufgabe sind – alles Tiefere holt die Rekursion.
   // Papierkorb bleibt aussen vor (subtasksToDuplicate filtert ihn ohnehin, aber schon hier
@@ -222,9 +238,17 @@ export async function applyTemplate(plugin: BeautyTasksPlugin, rootPath: string,
   if (templateKind(plugin.app, rootPath) === "project") {
     // Die Wurzel wird zum Projekt (oder es gibt schon eines) – nicht zu einer Aufgabe. Ihre
     // direkten Kinder lösen sich deshalb von ihr und werden Aufgaben des Projekts (detachTop).
+    // Ihre Abschnitte kommen mit: ins neue Projekt direkt, in ein bestehendes zusammengeführt
+    // (bekannte Kennungen bleiben, wie das Projekt sie hat).
+    const sections = templateSections(plugin.app, rootPath);
     const target = opts.newProject
-      ? await createProjectNote(plugin.app, plugin.settings, opts.newProject, false, null, false, root.description)
+      ? await createProjectNote(plugin.app, plugin.settings, opts.newProject, false, null, false, root.description, sections)
       : opts.project;
+    if (!opts.newProject && target && sections.length) {
+      const ziel = listProjectsAndAreas(plugin.app);
+      const proj = [...ziel.bereiche, ...ziel.projekte].find((p) => p.name === target);
+      if (proj) await setProjectSections(plugin.app, proj.path, mergeSections(proj.sections, sections));
+    }
     await plugin.duplicateSubtree(rootPath, "", {
       from: plugin.templates, dates, project: target, detachTop: true,
     });
@@ -244,6 +268,7 @@ export async function applyTemplate(plugin: BeautyTasksPlugin, rootPath: string,
     labels: [...root.labels],
     recurrence: root.recurrence, recurBasis: root.recurBasis,
     reminders: d ? [...d.reminders] : [...root.reminders],
+    checklist: resetChecklist(root.checklist),
   });
 
   await plugin.duplicateSubtree(rootPath, created.basename, {

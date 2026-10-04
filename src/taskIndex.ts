@@ -5,6 +5,7 @@ import { isKnownStatus, isOpen, isDone, isTrashed, firstOpenStatus } from "./sta
 import { titleKey, fmTitle, firstH1, resolveTitle } from "./taskTitle";
 import { fieldKey, labelKey } from "./fieldNames";
 import { clearScanCaches } from "./scanCache";
+import { parseChecklist } from "./checklist";
 import { orderChain, severReferences, agendaDate, isOverdueTask, isTodayTask, isUpcomingTask } from "./filterEngine";   // umgekehrt nur `import type` – kein Laufzeit-Zyklus
 
 const PRIO = new Set<string>(["highest", "high", "medium", "normal", "low", "lowest"]);
@@ -347,6 +348,8 @@ export class TaskIndex extends Component {
       completed: typeof fm.completed === "string" ? fm.completed : null,   // voller Zeitstempel (Uhrzeit für Erledigt-Sortierung)
       cancelled: typeof fm.cancelled === "string" ? fm.cancelled : null,   // voller Zeitstempel (Uhrzeit für Papierkorb-Sortierung)
       externalId: fm.external_id != null ? String(fm.external_id) : null,
+      checklist: parseChecklist(fm.checklist),
+      section: typeof fm.section === "string" && fm.section.trim() ? fm.section.trim() : null,
     };
   }
 

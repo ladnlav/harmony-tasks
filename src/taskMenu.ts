@@ -11,7 +11,8 @@ import { Task } from "./types";
 import { openPopover, openPopoverAt, popRow } from "./popover";
 import { openDatePicker, quickDates } from "./datePicker";
 import { CHIPS, PRIOS, PRIO_KEY, ChipHost } from "./chips";
-import { listProjectsAndAreas, isInboxLink, copyTaskLink, openTaskNote, ProjItem, baseName, INBOX_KEY } from "./taskService";
+import { listProjectsAndAreas, isInboxLink, copyTaskLink, openTaskNote, ProjItem, baseName, INBOX_KEY, projectSections } from "./taskService";
+import { openSectionPicker } from "./sectionView";
 import { ConfirmModal } from "./confirmModal";
 import { isTrashed } from "./statuses";
 import { combineDT } from "./format";
@@ -145,6 +146,11 @@ export function showTaskMenu(ctx: PageCtx, task: Task, x: number, y: number, doc
     pop.createDiv({ cls: "bt-plus-sep" });
 
     const mvRow = popRow(pop, "corner-up-right", t("menu_move_project"), () => openMovePicker(plugin, task, mvRow, close));
+    // Abschnitt: nur an Hauptaufgaben eines Projekts MIT Abschnitten – eine Unteraufgabe steht im
+    // Abschnitt ihrer Hauptaufgabe, und ohne Abschnitte gäbe es nichts zu wählen.
+    if (!task.parent && projectSections(plugin.app, task.project).length) {
+      const secRow = popRow(pop, "list", t("psec_move"), () => openSectionPicker(plugin, task, secRow, close));
+    }
     row("copy", t("menu_duplicate"), () => void plugin.duplicateTask(task));
     row("bookmark-plus", t("menu_save_as_template"), () => void plugin.saveTaskAsTemplate(task));
     row("link", t("menu_copy_link"), () => copyTaskLink(plugin.app, task.path));

@@ -1,13 +1,16 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
 import type BeautyTasksPlugin from "./main";
 import { Task, TaskStatus } from "./types";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, setTaskTitle, TaskFields, baseName, EditScope } from "./taskService";
+import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, setTaskTitle, TaskFields, baseName, EditScope, ProjItem, projectSectionsByName } from "./taskService";
+import { findSection, orderedSections, sectionLabel } from "./sections";
 import { formatDateTime, combineDT } from "./format";
 import { openPopover, popRow } from "./popover";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
 import { readLog } from "./detailLog";
 import { DetailLogView } from "./detailLogView";
 import { SubtaskList } from "./subtaskList";
+import { ChecklistView } from "./checklistView";
+import { serializeChecklist, resetChecklist, sameChecklist } from "./checklist";
 import { ConfirmModal } from "./confirmModal";
 import { firstOpenStatus } from "./statuses";
 import { labelKey } from "./fieldNames";
@@ -41,6 +44,8 @@ export class TaskModal extends Modal {
   private log!: DetailLogView;         // Kommentar-Log (gemeinsame Komponente)
   private subs!: SubtaskList;          // Unteraufgaben-Sektion (über dem Kommentar-Log)
   private subsWrap!: HTMLElement;
+  private checklist!: ChecklistView;   // Checklisten-Sektion (über den Unteraufgaben)
+  private checklistWrap!: HTMLElement;
   private duePinned = false;          // true sobald Datum manuell gesetzt -> NL überschreibt nicht mehr
   private cleanTitle = "";            // Titel ohne erkannte Datum-/Label-Token
   private nl: QuickEntryState = emptyQuickEntryState();  // aus dem Titel Erkanntes (trennt es von Manuellem)
@@ -58,7 +63,7 @@ export class TaskModal extends Modal {
   /** opts.hideProjekt blendet das Projekt-Chip aus (Unteraufgaben-Modus – die
    *  Unteraufgabe erbt Projekt der Hauptaufgabe). opts.parent = Eltern-Basename. */
   constructor(private plugin: BeautyTasksPlugin, private existing?: Task, private defaultProject?: string,
-              private opts: { hideProjekt?: boolean; parent?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string }; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope } = {}) {
+              private opts: { hideProjekt?: boolean; parent?: string; defaultLabel?: string; defaultToday?: boolean; defaultTitle?: string; defaultStatus?: TaskStatus; seed?: Partial<ChipFields> & { description?: string }; openDetails?: boolean; duePinned?: boolean; stacked?: boolean; scope?: EditScope; defaultSection?: string } = {}) {
     super(plugin.app);
     const seed = opts.seed;
     this.f = existing
@@ -71,6 +76,8 @@ export class TaskModal extends Modal {
           labels: [...existing.labels],
           reminders: [...(existing.reminders ?? [])],
           description: existing.description,   // aus dem Frontmatter (kein Body-Read mehr nötig)
+          checklist: (existing.checklist ?? []).map((it) => ({ ...it })),   // Entwurf: Kopie, nicht der Index-Stand
+          section: existing.section ?? null,
         }
       // Neu: Basis + optionaler Seed (z. B. aus der Schnelleingabe, ⤢ „Voller Editor" – übernimmt
       // alle bereits gesetzten Chips). Explizit, damit reminders sicher string[] bleibt.
@@ -86,6 +93,8 @@ export class TaskModal extends Modal {
           recurrence: seed?.recurrence ?? null, recurBasis: seed?.recurBasis ?? "due",
           parent: seed?.parent ?? null, description: seed?.description,
           project: defaultProject ?? null,   // kein Default-Projekt -> Eingang (= kein Projekt)
+          checklist: [],
+          section: opts.defaultSection ?? null,   // „+ Aufgabe" in einem Abschnitt der Projektseite
         };
     if (opts.duePinned) this.duePinned = true;   // aus der Schnelleingabe übernommen (⤢)
   }
@@ -142,6 +151,9 @@ export class TaskModal extends Modal {
     // immer sichtbar, NICHT hinter dem Details-Chip. Die Büroklammer bedeutet im ganzen Plugin
     // „Kommentare/Anhänge" (siehe die Zeilen-Indikatoren in heuteView) – sie darf nicht zugleich
     // der einzige Weg zu den Unteraufgaben sein.
+    // Die Checkliste steht davor: Sie gehört zur Aufgabe selbst (ein Feld wie die Beschreibung),
+    // die Unteraufgaben sind eigene Notizen darunter.
+    this.checklistWrap = contentEl.createDiv({ cls: "bt-st bt-cl" });
     this.subsWrap = contentEl.createDiv({ cls: "bt-st" });
     // Detailbereich = Kommentare + Notiz-Link. Das ist es, was der Details-Chip schaltet.
     this.detailsWrap = contentEl.createDiv({ cls: "bt-details" });
@@ -166,8 +178,14 @@ export class TaskModal extends Modal {
       scope: () => this.editScope,
     });
 
+    this.checklist = new ChecklistView({
+      items: () => this.f.checklist ?? [],
+      set: (items) => { this.f.checklist = items; },
+    });
+
     this.applyParse();
     this.renderChips();
+    this.checklist.mount(this.checklistWrap);
     this.subs.mount(this.subsWrap);
     this.log.mount(this.logWrap);
     this.syncDetails();
@@ -216,6 +234,7 @@ export class TaskModal extends Modal {
       // Nicht bestätigte Entwürfe ZUERST: Wer eine Unteraufgabe oder einen Kommentar tippt und
       // dann „Speichern" drückt statt Enter, erwartet nicht, dass sein Text verschwindet. Vor
       // persist(), damit eine noch nicht angelegte Aufgabe den Kommentar beim Anlegen mitschreibt.
+      this.checklist?.flushDraft();
       this.subs?.flushDraft();
       this.log?.flushDraft();
       void this.persist();
@@ -418,8 +437,12 @@ export class TaskModal extends Modal {
         if (danger) r.addClass("bt-row-danger");
       };
       let any = renderPlusChips(pop, host, anchor, close);
+      if (any) pop.createDiv({ cls: "bt-plus-sep" });
+      // Checkliste: auch bei einer NEUEN Aufgabe – sie ist ein Feld der Aufgabe und braucht
+      // (anders als eine Unteraufgabe) keine bestehende Notiz.
+      row("list-todo", t("checklist_add"), () => this.checklist.focusComposer());
+      any = true;
       if (this.existing) {
-        if (any) pop.createDiv({ cls: "bt-plus-sep" });
         // Bewusst derselbe Schlüssel wie die Erfassungszeile (sub_add): Der Menüpunkt IST der
         // Weg zu genau dieser Zeile – zwei getrennte Strings würden über zehn Sprachen hinweg
         // frueher oder spaeter auseinanderlaufen.
@@ -452,6 +475,7 @@ export class TaskModal extends Modal {
       ...this.f, title: title + " " + t("copy_suffix"), status: firstOpenStatus(),
       titleInFrontmatter: this.existing?.titleInFm,   // Kopie hält es wie das Original
       parent: this.f.parent ?? this.opts.parent ?? null,
+      checklist: resetChecklist(this.f.checklist),   // die Kopie startet offen – ihre Punkte auch
     }, this.editScope.target);
     await this.log.flush(file);
     // Unteraufgaben (rekursiv) mitkopieren, verankert an der neuen Hauptkopie –
@@ -490,7 +514,9 @@ export class TaskModal extends Modal {
     if (this.f.priority && this.f.priority !== "normal") meta.push(t("chip_priority") + ": " + t(PRIO_KEY[this.f.priority]));
     if (this.f.labels?.length) meta.push(t("chip_label") + ": " + this.f.labels.map((l) => "#" + l).join(", "));
     if (this.f.project) meta.push(t("group_project") + ": " + projectDisplayName(this.f.project));
-    const desc = (this.f.description ?? "").trim();
+    // Checkliste als eigener Absatz im Textblock (☐/☑) – ohne weiteres iframe-Element (s. unten).
+    const checklist = (this.f.checklist ?? []).map((it) => (it.done ? "☑ " : "☐ ") + it.text).join("\n");
+    const desc = [(this.f.description ?? "").trim(), checklist].filter(Boolean).join("\n\n");
 
     // Das iframe-Element selbst gehoert dem App-Realm -> Obsidian-Helfer: anlegen, klassifizieren
     // und anhaengen in einem Zug.
@@ -574,8 +600,17 @@ export class TaskModal extends Modal {
     const ic = this.projektBtn.createSpan({ cls: "bt-projekt-ic" });
     setIcon(ic, inbox ? "inbox" : (sel?.icon ?? "folder"));
     if (sel?.color) ic.setCssStyles({ color: sel.color });
-    this.projektBtn.createSpan({ text: inbox ? t("nav_inbox") : projectDisplayName(this.f.project) });
+    // „Projekt › Abschnitt", sobald ein (noch existierender) Abschnitt gewählt ist.
+    const sec = inbox || !sel ? null : sectionLabel(sel.sections, this.f.section);
+    this.projektBtn.createSpan({ text: (inbox ? t("nav_inbox") : projectDisplayName(this.f.project)) + (sec ? " › " + sec : "") });
     const car = this.projektBtn.createSpan({ cls: "bt-projekt-car" }); setIcon(car, "chevron-down");
+  }
+
+  /** Der Abschnitt, der gespeichert wird: nur wenn es ihn im gewählten Projekt gibt. Wechselt das
+   *  Projekt (Auswahl, @Projekt im Titel), fällt ein fremder Abschnitt so von allein weg. */
+  private validSection(): string | null {
+    if (!this.f.section || isInboxLink(this.f.project)) return null;
+    return findSection(projectSectionsByName(this.app, this.f.project), this.f.section) ? this.f.section : null;
   }
 
   private openProject(anchor: HTMLElement): void {
@@ -586,13 +621,21 @@ export class TaskModal extends Modal {
       popRow(pop, "plus", t("pick_new_area"), () => this.startNewProject(pop, close, true)).addClass("bt-row-action");
 
       const { bereiche, projekte } = listProjectsAndAreas(this.app);
-      const pick = (name: string | null) => { this.f.project = name; this.renderProjekt(); close(); };
+      const pick = (name: string | null, section: string | null = null) => { this.f.project = name; this.f.section = section; this.renderProjekt(); close(); };
       // Eingang = kein Projekt (Auswahl leert das Projekt-Feld).
       popRow(pop, "inbox", t("nav_inbox"), () => pick(null), isInboxLink(this.f.project));
-      const group = (title: string, items: { name: string; icon: string; color: string | null }[]) => {
+      const aktiv = this.validSection();
+      const group = (title: string, items: ProjItem[]) => {
         if (!items.length) return;
         pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), this.f.project === it.name, it.color ?? undefined);
+        for (const it of items) {
+          popRow(pop, it.icon, it.name, () => pick(it.name), this.f.project === it.name && !aktiv, it.color ?? undefined);
+          // Abschnitte eingerückt unter ihrem Projekt: Projekt UND Abschnitt in einem Klick.
+          for (const e of orderedSections(it.sections)) {
+            popRow(pop, "list", e.def.name, () => pick(it.name, e.def.id), this.f.project === it.name && aktiv === e.def.id)
+              .addClass(e.depth ? "bt-row-sec2" : "bt-row-sec");
+          }
+        }
       };
       group(t("group_area"), bereiche);
       group(t("group_project"), projekte);
@@ -658,6 +701,7 @@ export class TaskModal extends Modal {
     // in die frisch angelegte Notiz. Käme der Entwurf erst über onClose dazu, wäre dieser
     // Zug bereits gefahren und der Text verloren. Beide flushDraft() sind mehrfach aufrufbar
     // (sie leeren ihr Feld), der zweite Aufruf aus onClose läuft also ins Leere.
+    this.checklist?.flushDraft();
     this.subs?.flushDraft();
     this.log?.flushDraft();
     await this.persist();
@@ -689,6 +733,13 @@ export class TaskModal extends Modal {
           set(labelKey(), this.f.labels);   // Feldname konfigurierbar (s. fieldNames.ts)
           set("reminders", this.f.reminders);
           set("description", (this.f.description ?? "").trim() || null);   // leer => Feld entfernen
+          // In einer Vorlage stehen Aufgaben ohne Projekt, tragen aber ihre Abschnitts-Kennung bis
+          // zum Anwenden – dort also nichts anfassen (validSection kennte kein Projekt).
+          if (!this.opts.scope) set("section", this.validSection());
+          // Nur bei echter Änderung: Die Checkliste lässt sich auch ohne Modal abhaken (Badge in der
+          // Liste, anderes Gerät). Ein unveränderter Entwurf überschriebe solche Haken sonst mit
+          // dem Stand vom Öffnen.
+          if (!sameChecklist(this.existing?.checklist, this.f.checklist)) set("checklist", serializeChecklist(this.f.checklist));
         });
         // Titel-Kaskade (s. taskTitle.ts): `title:` im Frontmatter, sonst die erste H1 – der
         // Dateiname bleibt der Slug (kein Umbenennen, sonst brechen Eltern-Links; keine
@@ -696,7 +747,7 @@ export class TaskModal extends Modal {
         if (title !== this.existing.title) await setTaskTitle(this.app, file, title);
       }
     } else {
-      const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title, parent: this.f.parent ?? this.opts.parent ?? null }, this.editScope.target);
+      const file = await createTaskNote(this.app, this.plugin.settings, { ...this.f, title, parent: this.f.parent ?? this.opts.parent ?? null, section: this.validSection() }, this.editScope.target);
       await this.log.flush(file);
     }
   }

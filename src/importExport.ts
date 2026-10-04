@@ -8,13 +8,16 @@ import { combineDT } from "./format";
 import { listFilters, createFilterNote, FilterItem } from "./filterService";
 import { FilterCriteria, ViewOptions } from "./filterEngine";
 import { isKnownStatus } from "./statuses";
+import { parseChecklist, serializeChecklist } from "./checklist";
+import { readSections, writeSections, StoredSection } from "./sections";
 import { t } from "./i18n";
 
 const EXPORT_FORMAT = "beautytasks";
-const EXPORT_VERSION = 3;
+const EXPORT_VERSION = 4;
 // v1 = nur Aufgaben · v2 = eigener `lists`-Abschnitt (Projekt/Bereich mit Typ)
 // v3 = `sortOrder` und `body` an der Aufgabe, `icon`/`description`/`hidden` an der Liste,
 //      dazu `filters` und die Label-Farben/-Sichtbarkeit.
+// v4 = `checklist` und `section` an der Aufgabe, `sections` an der Liste.
 //
 // Die Zahl ist eine ANGABE, keine Schranke: `parseExport` prüft sie bewusst nicht. Ältere Dateien
 // bleiben lesbar (die neuen Felder sind optional und fehlen dann einfach), und eine v3-Datei lässt
@@ -52,6 +55,10 @@ export interface ExportTask {
   /** Der Notiz-Inhalt UNTER der Titelzeile, wörtlich (v3): eigener Text UND Detail-Log.
    *  Leer bei den allermeisten Aufgaben – die tragen ihren Inhalt im Frontmatter (`description`). */
   body?: string;
+  /** Checkliste in gespeicherter Form, „[ ] …"/„[x] …" (v4, s. checklist.ts). Fehlt ohne Punkte. */
+  checklist?: string[];
+  /** Abschnitt im Projekt (Kennung, v4, s. sections.ts). Die Definition reist mit der Liste. */
+  section?: string | null;
 }
 
 /** Listen-Definition (Projekt/Bereich). Trägt den Typ, den die Aufgaben-Referenz allein nicht
@@ -65,6 +72,8 @@ export interface ExportList {
   icon?: string | null;
   description?: string;
   hidden?: boolean;
+  /** Abschnitte des Projekts/Bereichs (v4) – die Aufgaben verweisen mit `section` darauf. */
+  sections?: StoredSection[];
 }
 
 /** Ein gespeicherter Filter. Kriterien und Anzeige-Optionen wandern als Ganzes mit – sie
@@ -177,6 +186,8 @@ export function toExportTask(tk: Task, body = ""): ExportTask {
     description: tk.description,
     sortOrder: tk.sortOrder,
     body: body || undefined,
+    checklist: tk.checklist?.length ? serializeChecklist(tk.checklist) : undefined,
+    section: tk.section ?? undefined,
   };
 }
 
@@ -205,6 +216,7 @@ export function toExportList(p: ProjItem): ExportList {
   return {
     name: p.name, type: p.type, color: p.color, archived: p.archived,
     icon, description: p.description || "", hidden: p.hidden,
+    sections: p.sections?.length ? writeSections(p.sections) : undefined,
   };
 }
 
@@ -240,6 +252,10 @@ export function importedTaskFrontmatter(et: ExportTask, typeName: string, titleN
     cancelled: et.cancelled ?? null,
     external_id: et.externalId ?? null,
     description: (et.description ?? "").trim() || null,   // Beschreibung im Frontmatter, nicht im Body
+    // Über parse/serialize statt wörtlich: Ein von Hand bearbeiteter Export wird so auf die Form
+    // gebracht, die der Index liest. [] -> von buildFrontmatter verworfen.
+    checklist: serializeChecklist(parseChecklist(et.checklist)),
+    section: et.project && et.section ? et.section : null,
   };
 }
 
@@ -254,6 +270,8 @@ export function importedListFrontmatter(list: ExportList, typeName: string): Rec
     description: (list.description ?? "").trim() || undefined,
     nav_hidden: list.hidden ? true : undefined,
     created: todayIso(),
+    // Über read/write statt wörtlich: ein von Hand bearbeiteter Export kommt bereinigt an.
+    sections: list.sections?.length ? writeSections(readSections(list.sections)) : undefined,
   };
 }
 

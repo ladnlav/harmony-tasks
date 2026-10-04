@@ -107,6 +107,69 @@ const POSNAMES = longestFirst(POS);
 /** { n, unit } -> „FREQ=DAILY" / „FREQ=MONTHLY;INTERVAL=3". INTERVAL=1 bleibt weg (Vorgabewert). */
 const recurRule = (n: number, unit: string): string => "FREQ=" + FREQ[unit] + (n > 1 ? ";INTERVAL=" + n : "");
 
+// ── Mehrere Wochentage, Werktage, Wochenende ──
+// Kurzformen nur INNERHALB einer Aufzählung nach „every"/„jeden" („every mon, wed and fri"). Allein
+// wären „sat"/„sun" (und erst recht deutsche „do"/„so") zu oft gewöhnliche Wörter.
+const WD_SHORT: Record<string, number> = { mon: 1, tue: 2, tues: 2, wed: 3, thu: 4, thur: 4, thurs: 4, fri: 5, sat: 6, sun: 0 };
+const WD_ANY: Record<string, number> = { ...WD, ...WD_SHORT };
+const WDANY = longestFirst(WD_ANY);
+const DAYSEP = "\\s*(?:,|and|und|&|\\+)\\s*";
+const WORKDAYS = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR";
+const WEEKENDS = "FREQ=WEEKLY;BYDAY=SA,SU";
+/** Tage (JS-Zählung, So = 0) -> BYDAY in Kalenderreihenfolge ab Montag, jeder einmal. */
+const byDay = (days: number[]): string => [...new Set(days)].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => WD_CODE[d]).join(",");
+/** Wöchentlich an den genannten Tagen, optional alle n Wochen. `null` = keine Tage gefunden. */
+const weeklyOn = (n: number, days: number[]): string | null =>
+  days.length ? "FREQ=WEEKLY" + (n > 1 ? ";INTERVAL=" + n : "") + ";BYDAY=" + byDay(days) : null;
+/** Alle Tageswörter einer Aufzählung, in der Reihenfolge, in der sie dastehen. */
+const daysIn = (s: string, names: Record<string, number>, rx: RegExp): number[] =>
+  [...s.matchAll(rx)].map((m) => names[m[1].toLowerCase()]).filter((d): d is number => d !== undefined);
+const LATIN_DAY = new RegExp("(?:^|[^A-Za-zÄÖÜäöüß])(" + WDANY + ")(?![A-Za-zÄÖÜäöüß])", "gi");
+
+// ── Russisch ──
+// Eigene Wortlisten statt der deutschen/englischen: Die Formen wechseln mit dem Kasus („каждый
+// вторник", „каждую среду", „по вторникам"). Und die Wortgrenze braucht \p{L} (reU) – `re` kennt
+// Kyrillisch nicht als Buchstaben und träfe sonst mitten im Wort („некаждый").
+const RU_EVERY = "(?:каждый|каждую|каждое|каждые|каждого|каждой)";
+const RU_UNITS: Record<string, string> = {
+  день: "day", дня: "day", дней: "day",
+  неделю: "week", недели: "week", недель: "week", неделя: "week",
+  месяц: "month", месяца: "month", месяцев: "month",
+  год: "year", года: "year", лет: "year",
+};
+const RU_ADV: Record<string, string> = { ежедневно: "FREQ=DAILY", еженедельно: "FREQ=WEEKLY", ежемесячно: "FREQ=MONTHLY", ежегодно: "FREQ=YEARLY" };
+/** Wochentage nach „каждый/каждую …": Nominativ/Akkusativ Singular und die üblichen Kürzel. */
+const RU_WD: Record<string, number> = {
+  понедельник: 1, вторник: 2, среда: 3, среду: 3, четверг: 4, пятница: 5, пятницу: 5,
+  суббота: 6, субботу: 6, воскресенье: 0, пн: 1, вт: 2, ср: 3, чт: 4, пт: 5, сб: 6, вс: 0,
+};
+/** Nach „по …" NUR der Dativ Plural („по вторникам"): „по субботу" heisst „bis Samstag". */
+const RU_WD_PL: Record<string, number> = { понедельникам: 1, вторникам: 2, средам: 3, четвергам: 4, пятницам: 5, субботам: 6, воскресеньям: 0 };
+const RU_WD_ALL: Record<string, number> = { ...RU_WD, ...RU_WD_PL };
+const RU_ORD: Record<string, number> = {
+  второй: 2, вторую: 2, второе: 2, вторая: 2,
+  третий: 3, третью: 3, третье: 3, третья: 3,
+  четвёртый: 4, четвертый: 4, четвёртую: 4, четвертую: 4, четвёртое: 4, четвертое: 4,
+};
+const RU_POS: Record<string, number> = {
+  первый: 1, первую: 1, первое: 1, первая: 1, ...RU_ORD,
+  последний: -1, последнюю: -1, последнее: -1, последняя: -1,
+};
+const RU_UNITNAMES = longestFirst(RU_UNITS);
+const RU_ADVNAMES = longestFirst(RU_ADV);
+const RU_WDNAMES = longestFirst(RU_WD);
+const RU_WDPLNAMES = longestFirst(RU_WD_PL);
+const RU_WDALLNAMES = longestFirst(RU_WD_ALL);
+const RU_ORDNAMES = longestFirst(RU_ORD);
+const RU_POSNAMES = longestFirst(RU_POS);
+const RU_SEP = "\\s*(?:,|и|&|\\+)\\s*";
+const RU_DAY = new RegExp("(?:^|[^\\p{L}])(" + RU_WDALLNAMES + ")(?![\\p{L}])", "giu");
+/** Wie `re`, aber mit Unicode-Wortgrenze – für Kyrillisch. Ebenfalls ohne Lookbehind (iOS < 16.4). */
+const reU = (body: string) => new RegExp("(?:^|[^\\p{L}\\p{N}\\uE000-\\uF8FF])" + body + "(?![\\p{L}\\p{N}])", "iu");
+/** Zahl oder Ordnungswort („2", „вторую", „other") -> Intervall. */
+const nOf = (raw: string | undefined, ord: Record<string, number>): number =>
+  !raw ? 1 : /^\d+$/.test(raw) ? parseInt(raw, 10) : (ord[raw.toLowerCase()] ?? 1);
+
 export interface QuickEntry {
   title: string; faellig: string; time: string; tags: string[]; priority: Priority | null; project: string | null;
   recurrence: string | null;
@@ -168,6 +231,63 @@ export function parseQuickEntry(raw: string, projects: string[] = [], now: Date 
     const r = fn(m);
     if (r) { recurrence = r; recurSrc = trigger(m[0]); text = text.replace(m[0], " "); }
   };
+  // Regeln, die ihre Wochentage SELBST verbrauchen (mehrere Tage, Russisch), setzen den ersten
+  // Termin auf den nächsten passenden Tag NACH heute – so, wie „jeden Montag" es schon immer tut
+  // (dort nimmt die Datumsregel unten den nächsten Montag). Sonst begänne „jeden Montag und
+  // Donnerstag", an einem Montag getippt, heute, „jeden Montag" aber erst in einer Woche.
+  let abMorgen = false;
+  const grabDays = (rx: RegExp, fn: (m: RegExpMatchArray) => string | null) => {
+    const vorher = recurrence;
+    grabRecur(rx, fn);
+    if (!vorher && recurrence) abMorgen = true;
+  };
+  const latinDays = (s: string): number[] => daysIn(s, WD_ANY, LATIN_DAY);
+  const ruDays = (s: string): number[] => daysIn(s, RU_WD_ALL, RU_DAY);
+
+  // ── Mehrere Wochentage (vor allen Wochenregeln, sonst griffe „jeden Montag" zuerst) ──
+  // „every 2 weeks on tue and thu", „alle 2 Wochen am Montag und Donnerstag", „every other week on fri".
+  grabDays(re("(?:jeden|jede[nsr]?|alle|every)\\s+(?:(\\d+|" + ORDNAMES + ")\\s+)?(?:wochen?|weeks?)\\s+(?:on|am)\\s+((?:" + WDANY + ")(?:" + DAYSEP + "(?:" + WDANY + "))*)"),
+    (m) => weeklyOn(nOf(m[1], ORD), latinDays(m[2])));
+  // „every monday and thursday", „jeden Montag und Donnerstag", „every mon, wed, fri".
+  grabDays(re("(?:jeden|jede[nsr]?|alle|every)\\s+((?:" + WDANY + ")(?:" + DAYSEP + "(?:" + WDANY + "))+)"),
+    (m) => weeklyOn(1, latinDays(m[1])));
+  // Werktage und Wochenende. Bewusst NICHT „am Wochenende"/„on the weekend": das ist meist EIN Termin.
+  grabDays(re("(?:every\\s+weekday|weekdays|jeden\\s+werktag|werktags|an\\s+werktagen)"), () => WORKDAYS);
+  grabDays(re("(?:every\\s+weekend|weekends|jedes\\s+wochenende|wochenends|an\\s+wochenenden)"), () => WEEKENDS);
+
+  // ── Russisch ──
+  // Monatsregeln zuerst: „каждый второй понедельник МЕСЯЦА" ist monatlich, nicht zweiwöchentlich.
+  // „в последнюю пятницу месяца", „каждый первый понедельник месяца".
+  grabDays(reU("(?:" + RU_EVERY + "\\s+|во?\\s+)?(" + RU_POSNAMES + ")\\s+(" + RU_WDNAMES + ")\\s+(?:" + RU_EVERY + "\\s+)?месяца"),
+    (m) => { const d = RU_WD[m[2].toLowerCase()]; return d === undefined ? null : "FREQ=MONTHLY;BYDAY=" + RU_POS[m[1].toLowerCase()] + WD_CODE[d]; });
+  // „15 числа каждого месяца", „каждое 15-е число", „ежемесячно 15 числа".
+  const monatsTag = (raw: string): string | null => { const d = parseInt(raw, 10); return d >= 1 && d <= 31 ? "FREQ=MONTHLY;BYMONTHDAY=" + d : null; };
+  grabRecur(reU("(?:ежемесячно\\s+|" + RU_EVERY + "\\s+месяц\\s+)?(\\d{1,2})(?:-?го)?\\s+числа\\s+(?:" + RU_EVERY + "\\s+)?месяца"), (m) => monatsTag(m[1]));
+  grabRecur(reU(RU_EVERY + "\\s+(\\d{1,2})(?:-?е|-?го)?\\s+число"), (m) => monatsTag(m[1]));
+  grabRecur(reU("(?:ежемесячно|" + RU_EVERY + "\\s+месяц)\\s+(\\d{1,2})(?:-?го)?\\s+числа"), (m) => monatsTag(m[1]));
+  // „каждые 2 недели по вторникам и четвергам", „каждую вторую неделю в понедельник".
+  grabDays(reU(RU_EVERY + "\\s+(?:(\\d+|" + RU_ORDNAMES + ")\\s+)?(?:неделю|недели|недель)\\s+(?:по|во?)\\s+((?:" + RU_WDALLNAMES + ")(?:" + RU_SEP + "(?:" + RU_WDALLNAMES + "))*)"),
+    (m) => weeklyOn(nOf(m[1], RU_ORD), ruDays(m[2])));
+  // „каждый второй понедельник" (alle zwei Wochen).
+  grabDays(reU(RU_EVERY + "\\s+(" + RU_ORDNAMES + ")\\s+(" + RU_WDNAMES + ")"),
+    (m) => weeklyOn(RU_ORD[m[1].toLowerCase()] ?? 1, ruDays(m[2])));
+  // „каждый вторник и четверг", „каждую среду", „по вторникам и четвергам", „по пятницам".
+  grabDays(reU("(?:" + RU_EVERY + "\\s+((?:" + RU_WDNAMES + ")(?:" + RU_SEP + "(?:" + RU_WDNAMES + "))*)|по\\s+((?:" + RU_WDPLNAMES + ")(?:" + RU_SEP + "(?:" + RU_WDPLNAMES + "))*))"),
+    (m) => weeklyOn(1, ruDays(m[1] ?? m[2] ?? "")));
+  // Werktage/Wochenende. „в выходные" bleibt Text: das ist meist EIN Termin.
+  grabDays(reU("(?:по\\s+будням|по\\s+рабочим\\s+дням|" + RU_EVERY + "\\s+(?:будний|рабочий)\\s+день|в\\s+будни)"), () => WORKDAYS);
+  grabDays(reU("(?:по\\s+выходным|каждые\\s+выходные)"), () => WEEKENDS);
+  // „каждую вторую неделю", „каждый третий день".
+  grabRecur(reU(RU_EVERY + "\\s+(" + RU_ORDNAMES + ")\\s+(" + RU_UNITNAMES + ")"),
+    (m) => recurRule(RU_ORD[m[1].toLowerCase()] ?? 1, RU_UNITS[m[2].toLowerCase()]));
+  // „каждый день", „каждые 3 дня", „раз в неделю", „раз в 2 недели", „через день".
+  grabRecur(reU(RU_EVERY + "\\s+(?:(\\d+)\\s+)?(" + RU_UNITNAMES + ")"),
+    (m) => recurRule(m[1] ? parseInt(m[1], 10) : 1, RU_UNITS[m[2].toLowerCase()]));
+  grabRecur(reU("раз\\s+в\\s+(?:(\\d+)\\s+)?(" + RU_UNITNAMES + ")"),
+    (m) => recurRule(m[1] ? parseInt(m[1], 10) : 1, RU_UNITS[m[2].toLowerCase()]));
+  grabRecur(reU("через\\s+день"), () => recurRule(2, "day"));
+  grabRecur(reU("(" + RU_ADVNAMES + ")"), (m) => RU_ADV[m[1].toLowerCase()]);
+
   // „jeden tag", „jede 2 wochen", „alle 3 tage", „every 2 days". Ohne Zahl = jede Einheit.
   // „alle"/„every" ohne Einheit dahinter trifft NICHT – „alle Rechnungen zahlen" bleibt Text.
   grabRecur(re("(?:jeden|jede[nsr]?|alle|every)\\s+(?:(\\d+)\\s+)?(" + RUNITS + ")"),
@@ -337,8 +457,8 @@ export function parseQuickEntry(raw: string, projects: string[] = [], now: Date 
   //
   // Ohne Datum im Text wird ab heute gerechnet: Eine Wiederholung ohne Anker liefert nie eine
   // nächste Instanz (nextInstance braucht due oder scheduled) – der Chip zeigte dann eine Regel
-  // an, die nichts tut.
-  if (recurrence) faellig = firstOccurrence(recurrence, faellig || iso(now)) ?? faellig;
+  // an, die nichts tut. Regeln, die ihre Tage selbst verbraucht haben, rechnen ab morgen (s. abMorgen).
+  if (recurrence) faellig = firstOccurrence(recurrence, faellig || iso(abMorgen ? addDays(now, 1) : now)) ?? faellig;
 
   return { title: unmask(text.replace(/\s{2,}/g, " ").trim()), faellig, time, tags: [...new Set(tags)], priority, project, recurrence, faelligSrc, timeSrc, recurSrc };
 }

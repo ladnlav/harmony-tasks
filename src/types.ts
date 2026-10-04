@@ -67,7 +67,15 @@ export interface Task {
   completed: string | null;
   cancelled: string | null;
   externalId: string | null;
+  /** Checkliste (`checklist` im Frontmatter, s. checklist.ts) – Punkte OHNE eigene Notiz. */
+  checklist: ChecklistItem[];
+  /** Abschnitt im Projekt (`section`: Kennung aus dem `sections` der Projektnotiz, s. sections.ts).
+   *  Roh gelesen – ob es den Abschnitt gibt, entscheidet erst die Projektseite. */
+  section: string | null;
 }
+
+/** Ein Punkt der Checkliste einer Aufgabe. */
+export interface ChecklistItem { text: string; done: boolean; }
 
 /**
  * Das Datum, an dem eine Aufgabe in den Zeit-Ansichten steht (Heute, Demnächst, Kalender):
@@ -151,6 +159,7 @@ export interface BeautyTasksSettings {
   fontSectionPct: number;  // Skalierung Datums-/Abschnittsüberschriften in den Listen in % (100 = Standard)
   showDescriptionInList: boolean;  // Beschreibungs-Vorschau unter dem Titel in Listen
   showProjectDescription: boolean; // Beschreibung unter dem Seitentitel von Projekt/Bereich/Filter
+  showProjectOverview: boolean;    // Überblick (Fortschritt, nächste Termine, Infos) auf Projekt-/Bereichsseiten
   metaTheme: "minimalisdo" | "colorado" | "user";  // Meta-Farbstil: Minimalisdo (grau) / Colorado (farbig) / User (eigene Farben aus metaColors)
   metaColors: Partial<Record<MetaColorKey, string>>;   // einzeln überschreibbare Meta-Farben (s. MetaColorKey)
   startPage?: import("./pageCtx").StartPage;   // Startseite: feste Seite (PageRef) oder "last" = Seite des Tabs behalten (s. startPage.ts)
@@ -219,6 +228,7 @@ export const DEFAULT_SETTINGS: BeautyTasksSettings = {
   fontSectionPct: 100,
   showDescriptionInList: true,
   showProjectDescription: true,
+  showProjectOverview: true,
   metaTheme: "minimalisdo",
   metaColors: {},
   startPage: { kind: "view", key: "heute" },

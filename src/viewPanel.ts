@@ -8,15 +8,15 @@ import { openPopover } from "./popover";
 import { ViewOptions, FilterCriteria, PageLayout, FilterSort, FilterGroup, SortDir, SubtaskDisplay, LAYOUTS, SORTS, SORT_DIRS, SUBTASK_DISPLAYS, BOARD_SUBTASK_DISPLAYS, effectiveSubtasks, hasSortDir, hasCriteria, activeFacetCount, DEFAULT_OPTIONS, DEFAULT_CRITERIA } from "./filterEngine";
 import { PANEL_STYLE, buildFacets, renderFacet, selectControl } from "./facets";
 import { FilterModal } from "./filterModal";
-import { INBOX_KEY, baseName } from "./taskService";
+import { INBOX_KEY, baseName, projectSections } from "./taskService";
 import { resetSubtaskToggles } from "./heuteView";
 import { t } from "./i18n";
 
 /** Kontextabhängige Gruppierungs-Optionen: die auf dieser Seite redundante ausblenden
  *  (auf einer Projektseite ist „Liste" sinnlos -> „Label"; auf einer Label-Seite umgekehrt). */
-function groupOptions(kind: string): FilterGroup[] {
+function groupOptions(kind: string, sections = false): FilterGroup[] {
   const base: FilterGroup[] = ["none", "date", "deadline", "priority"];
-  if (kind === "project") base.push("label");
+  if (kind === "project") { base.push("label"); if (sections) base.push("section"); }
   else if (kind === "label") base.push("project");
   else { base.push("label"); base.push("project"); }
   return base;
@@ -122,13 +122,20 @@ export function openViewPanel(anchor: HTMLElement, ctx: PageCtx): void {
         // „Datum". Im BOARD sind „Keine"(=Status-Spalten) und „Datum"(=Spalte je Tag) verschieden, deshalb
         // bleibt „Keine" im Heute-Board (Status-Default). Das Demnächst-Board ist bewusst Datum-Default
         // (keine Status-Spalten). Volle Seiten: „Keine" = flache Liste, echt verschieden von „Datum".
-        const hideNone = page.key === "demnaechst" || (page.key === "heute" && o.layout !== "board");
-        const groups = hideNone ? groupOptions(page.kind).filter((g) => g !== "none") : groupOptions(page.kind);
-        const shownGroup = groups.includes(o.group) ? o.group : (hideNone ? "date" : "none");
+        // Projekt mit Abschnitten: In der LISTE ist „Keine" dort die Gliederung nach Abschnitten
+        // (s. renderProjectBoardInto) – also wie bei Heute „Keine" verbergen und „Abschnitte" als
+        // Normalfall zeigen. Im Board bleibt „Keine" die Status-Spalten, „Abschnitte" kommt dazu.
+        const hasSections = page.kind === "project" && projectSections(ctx.plugin.app, ctx.page.key).length > 0;
+        const sectionDefault = hasSections && o.layout === "list";
+        const hideNone = page.key === "demnaechst" || (page.key === "heute" && o.layout !== "board") || sectionDefault;
+        const opts = groupOptions(page.kind, hasSections);
+        const groups = hideNone ? opts.filter((g) => g !== "none") : opts;
+        const fallback: FilterGroup = sectionDefault ? "section" : hideNone ? "date" : "none";
+        const shownGroup = groups.includes(o.group) ? o.group : fallback;
         // Zähler in der Überschrift = wie viele der drei Zeilen vom Normalfall abweichen. Auf den
         // Agenda-Seiten ist „Datum" der Normalfall, nicht „Keine" (s. hideNone) – sonst zählte die
         // Vorgabe selbst als Abweichung.
-        const defGroup: FilterGroup = hideNone ? "date" : DEFAULT_OPTIONS.group;
+        const defGroup: FilterGroup = sectionDefault ? "section" : hideNone ? "date" : DEFAULT_OPTIONS.group;
         const n = (o.sort !== DEFAULT_OPTIONS.sort ? 1 : 0) + (shownGroup !== defGroup ? 1 : 0)
           + (hasSortDir(o.sort) && o.sortDir !== DEFAULT_OPTIONS.sortDir ? 1 : 0);
         if (cap(t("filter_arrange"), "arrange", n)) {

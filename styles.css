@@ -2879,3 +2879,242 @@ body.bt-task-modal-open .popover.hover-popover { z-index: calc(var(--layer-modal
 /* Gesperrter Haupt-Knopf: Obsidian gibt `.mod-cta` seine Akzentfarbe ohne Rücksicht auf
    `disabled` – ohne diese Zeile sähe der gesperrte Knopf aus wie ein bereiter. */
 .bt-tpl-modal button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ══ Checkliste ═══════════════════════════════════════════════════════════════════════════
+   Sektion im Aufgaben-Modal (checklistView.ts). Sie nutzt die Klassen der Unteraufgaben-
+   Sektion (.bt-st, .bt-sec-head, .bt-st-row, .bt-st-add …) und ergänzt hier nur, was eine
+   Checkliste anders hat: eckige Kästchen statt Status-Kreise, Zieh-Griff, Bearbeiten an Ort. */
+.bt-task-modal .bt-cl-row { position: relative; align-items: center; }
+.bt-task-modal .bt-cl-grip {
+  position: absolute; left: -14px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; color: var(--text-faint);
+  opacity: 0; cursor: grab; touch-action: none;
+}
+.bt-task-modal .bt-cl-grip svg { width: 13px; height: 13px; }
+.bt-task-modal .bt-cl-row:hover .bt-cl-grip, .bt-task-modal .bt-cl-row.is-dragging .bt-cl-grip { opacity: 0.8; }
+.bt-task-modal .bt-cl-row.is-dragging { opacity: 0.6; }
+.bt-task-modal .bt-cl-lbl { flex: 1; min-width: 0; cursor: text; border-radius: 4px; }
+.bt-task-modal .bt-cl-lbl:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.bt-task-modal .bt-cl-edit { height: 26px; }
+.bt-task-modal .bt-cl-row.is-editing { background: transparent; }
+
+/* Kästchen: bewusst ECKIG – rund ist im Plugin die Aufgabe (Status-Kreis). So liest man ohne
+   Nachdenken, ob eine Zeile eine Unteraufgabe (eigene Notiz) oder ein Checklisten-Punkt ist. */
+.bt-cl-box {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 3px; cursor: pointer;
+  border: 1.5px solid var(--text-faint); color: var(--text-on-accent);
+  box-sizing: border-box;
+}
+.bt-cl-box:hover { border-color: var(--interactive-accent); }
+.bt-cl-box.is-done { background: var(--interactive-accent); border-color: var(--interactive-accent); }
+.bt-cl-box svg { width: 11px; height: 11px; stroke-width: 3; }
+.bt-cl-box:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+
+/* Badge in Liste und Karte: wie das Unteraufgaben-Badge (.bt-subs), eigenes Symbol. */
+.bt-cl-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  color: var(--bt-c-subs); font-size: 0.85em;
+  padding: 1px 5px; border-radius: 5px; cursor: pointer;
+}
+.bt-cl-badge:hover { background: var(--background-modifier-hover); }
+.bt-cl-badge-ic { display: inline-flex; }
+.bt-cl-badge-ic svg { width: 14px; height: 14px; }
+.bt-cl-badge-n { font-size: 0.92em; font-variant-numeric: tabular-nums; }
+.bt-view .bt-cl-badge-n { transform: translateY(1px); }
+
+/* Popover am Badge: die Punkte zum Abhaken. Längere Texte dürfen umbrechen – anders als in
+   den übrigen Popover-Listen ist der Text hier der Inhalt, nicht nur eine Beschriftung. */
+.bt-pop.bt-cl-pop { min-width: 220px; max-width: 340px; }
+.bt-pop.bt-cl-pop .bt-cl-pop-row { align-items: flex-start; }
+.bt-pop.bt-cl-pop .bt-cl-pop-row .bt-cl-box { margin-top: 2px; }
+.bt-pop.bt-cl-pop .bt-cl-pop-row .bt-row-lbl { white-space: normal; overflow-wrap: anywhere; }
+.bt-pop.bt-cl-pop .bt-cl-pop-row.is-done .bt-row-lbl { color: var(--text-muted); text-decoration: line-through; }
+
+@media (pointer: coarse) {
+  .bt-task-modal .bt-cl-grip { opacity: 0.6; }
+  .bt-cl-box { width: 18px; height: 18px; }
+  .bt-task-modal .bt-cl-edit { height: 44px; }
+}
+
+/* ══ Wiederholungs-Editor (recurrenceModal.ts) ═══════════════════════════════════════════
+   Baut auf dem Neu/Bearbeiten-Modal auf (.bt-new-modal: Titel, Felder, Fußzeile). Neu sind nur
+   die Umschalter, die Wochentags-Knöpfe und die Vorschau. */
+.bt-recur-modal { width: 460px; }
+.bt-recur-ed-note {
+  margin: -4px 0 14px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
+  background: var(--background-secondary); color: var(--text-muted);
+}
+.bt-recur-ed-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.bt-recur-ed-num { width: 72px; flex: 0 0 auto; }
+.bt-recur-ed-unit { color: var(--text-muted); font-size: 13px; }
+.bt-recur-ed-select { flex: 1 1 140px; min-width: 0; }
+
+/* Umschalter: eine Wahl aus wenigen – wie eine Knopfleiste, aktiv in der Akzentfarbe. */
+.bt-recur-ed-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.bt-recur-ed-segbtn {
+  height: auto; min-height: 0; padding: 4px 10px; border-radius: 6px; font-size: 13px;
+  background: var(--background-secondary); color: var(--text-muted); box-shadow: none; cursor: pointer;
+}
+.bt-recur-ed-segbtn:hover { color: var(--text-normal); }
+.bt-recur-ed-segbtn.is-active { background: var(--interactive-accent); color: var(--text-on-accent); }
+
+/* Wochentage: sieben runde Knöpfe, mehrere wählbar. */
+.bt-recur-ed-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.bt-recur-ed-day {
+  width: 40px; height: 32px; min-height: 0; padding: 0; border-radius: 8px; font-size: 12.5px;
+  background: var(--background-secondary); color: var(--text-normal); box-shadow: none; cursor: pointer;
+}
+.bt-recur-ed-day.is-on { background: var(--interactive-accent); color: var(--text-on-accent); font-weight: 600; }
+.bt-recur-ed-date-btn { align-self: flex-start; height: auto; min-height: 0; padding: 5px 12px; font-size: 13px; }
+
+/* Vorschau: Klartext der Regel + die nächsten Termine. */
+.bt-recur-ed-preview { margin: 6px 0 4px; padding: 10px 12px; border-radius: 8px; background: var(--background-secondary); }
+.bt-recur-ed-desc { font-size: 13.5px; font-weight: 600; color: var(--text-normal); }
+.bt-recur-ed-dates-h { margin-top: 8px; font-size: 11.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+.bt-recur-ed-dates { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; font-size: 12.5px; color: var(--text-muted); }
+
+@media (pointer: coarse) {
+  .bt-recur-ed-day { width: 44px; height: 44px; }
+  .bt-recur-ed-segbtn { padding: 10px 12px; }
+}
+
+/* ══ Projekt-Überblick (overviewBlock.ts) ═════════════════════════════════════════════════
+   Einklappbare Karte über den Aufgaben einer Projekt-/Bereichsseite. Ruhig gehalten: Sie ist
+   Orientierung, nicht Inhalt – die Aufgaben darunter bleiben die Hauptsache. */
+.bt-view .bt-ov {
+  margin: 4px 0 16px; padding: 8px 12px 10px; border-radius: 10px;
+  background: var(--background-secondary); border: 1px solid var(--bt-line-faint);
+}
+.bt-view .bt-ov-head { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; border-radius: 6px; }
+.bt-view .bt-ov-head:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.bt-view .bt-ov-chev { display: inline-flex; color: var(--text-muted); }
+.bt-view .bt-ov-chev svg { width: 16px; height: 16px; }
+.bt-view .bt-ov-title { font-size: 0.85em; font-weight: 650; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.bt-view .bt-ov-summary { margin-left: auto; font-size: 0.82em; color: var(--text-faint); font-variant-numeric: tabular-nums; display: none; }
+.bt-view .bt-ov.is-collapsed .bt-ov-summary { display: inline; }
+.bt-view .bt-ov.is-collapsed .bt-ov-body { display: none; }
+.bt-view .bt-ov-body { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.bt-view .bt-ov-muted { color: var(--text-faint); font-size: 0.88em; }
+
+/* Fortschritt: Balken + „12/18 · 67 %". Die Breite kommt als CSS-Variable (keine Inline-Styles). */
+.bt-view .bt-ov-progress { display: flex; align-items: center; gap: 10px; }
+.bt-view .bt-ov-track { flex: 1; height: 6px; border-radius: 999px; background: var(--background-modifier-border); overflow: hidden; }
+.bt-view .bt-ov-fill { height: 100%; width: var(--bt-ov-pct, 0%); border-radius: 999px; background: var(--interactive-accent); transition: width .2s; }
+.bt-view .bt-ov-progress-txt { font-size: 0.85em; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Zähler als Chips: ein Klick filtert die Seite auf den Zeitraum. */
+.bt-view .bt-ov-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.bt-view .bt-ov-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px;
+  font-size: 0.82em; color: var(--text-muted); background: var(--background-primary);
+  border: 1px solid var(--bt-line-faint); cursor: pointer;
+}
+.bt-view .bt-ov-chip:hover { color: var(--text-normal); border-color: var(--background-modifier-border-hover); }
+.bt-view .bt-ov-chip.is-overdue { color: var(--bt-dist-overdue); }
+.bt-view .bt-ov-chip.is-today { color: var(--bt-dist-today); }
+.bt-view .bt-ov-chip.is-active { background: var(--interactive-accent); border-color: var(--interactive-accent); color: var(--text-on-accent); }
+.bt-view .bt-ov-chip-ic { display: inline-flex; }
+.bt-view .bt-ov-chip-ic svg { width: 13px; height: 13px; }
+.bt-view .bt-ov-chip-n { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+.bt-view .bt-ov-sub { font-size: 0.78em; font-weight: 650; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Als Nächstes: Datum links (Distanzfarben wie in der Liste), Titel rechts. */
+.bt-view .bt-ov-next-list { display: flex; flex-direction: column; margin-top: 4px; }
+.bt-view .bt-ov-next-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; }
+.bt-view .bt-ov-next-row:hover { background: var(--background-modifier-hover); }
+.bt-view .bt-ov-next-date { flex: 0 0 auto; min-width: 92px; font-size: 0.82em; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.bt-view .bt-ov-next-date.is-deadline::before { content: "⚑ "; }
+.bt-view .bt-ov-next-date[data-dist="overdue"] { color: var(--bt-dist-overdue); }
+.bt-view .bt-ov-next-date[data-dist="today"] { color: var(--bt-dist-today); }
+.bt-view .bt-ov-next-date[data-dist="d1"] { color: var(--bt-dist-d1); }
+.bt-view .bt-ov-next-date[data-dist="d2"] { color: var(--bt-dist-d2); }
+.bt-view .bt-ov-next-date[data-dist="week"] { color: var(--bt-dist-week); }
+.bt-view .bt-ov-next-title { flex: 1; min-width: 0; font-size: 0.9em; color: var(--text-normal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Infos & Links: der Body der Projektnotiz, gerendert. Lang -> gekappt, „Alles zeigen" darunter. */
+.bt-view .bt-ov-info-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bt-view .bt-ov-info-acts { display: inline-flex; gap: 2px; }
+.bt-view .bt-ov-icbtn {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 24px; min-height: 0; padding: 0;
+  background: transparent; box-shadow: none; color: var(--text-faint); border-radius: 5px; cursor: pointer;
+}
+.bt-view .bt-ov-icbtn:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.bt-view .bt-ov-icbtn svg { width: 14px; height: 14px; }
+.bt-view .bt-ov-info-md { font-size: 0.9em; margin-top: 2px; overflow-wrap: anywhere; }
+.bt-view .bt-ov-info-md > :first-child { margin-top: 0; }
+.bt-view .bt-ov-info-md > :last-child { margin-bottom: 0; }
+.bt-view .bt-ov-info-md.is-clamped {
+  max-height: 180px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 75%, transparent); mask-image: linear-gradient(to bottom, #000 75%, transparent);
+}
+.bt-view .bt-ov-more { margin-top: 4px; font-size: 0.82em; color: var(--interactive-accent); cursor: pointer; }
+.bt-view .bt-ov-info-empty {
+  margin-top: 4px; padding: 8px 10px; border-radius: 8px; border: 1px dashed var(--background-modifier-border);
+  font-size: 0.88em; color: var(--text-faint); cursor: pointer;
+}
+.bt-view .bt-ov-info-empty:hover { color: var(--text-muted); border-color: var(--background-modifier-border-hover); }
+.bt-view .bt-ov-info-ta { width: 100%; min-height: 130px; resize: vertical; font-size: 0.9em; margin-top: 4px; }
+.bt-view .bt-ov-info-edit-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) { .bt-view .bt-ov-fill { transition: none; } }
+@media (pointer: coarse) {
+  .bt-view .bt-ov-chip { padding: 8px 12px; }
+  .bt-view .bt-ov-next-row { padding: 10px 6px; }
+  .bt-view .bt-ov-icbtn { width: 44px; height: 44px; }
+}
+
+/* ══ Abschnitte der Projektseite (sections.ts / decorateProjectSection) ═════════════════════
+   Ein Abschnitt IST eine Sektion der Liste (.bt-section) – mit Einklappen, Menü, Beschreibung
+   und „+ Aufgabe" am Ende. Unterabschnitte sind eingerückt und eine Spur leiser. */
+.bt-view .bt-psec-head { display: flex; align-items: center; gap: 4px; cursor: pointer; border-radius: 6px; }
+.bt-view .bt-psec-head:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.bt-view .bt-psec-chev { display: inline-flex; color: var(--text-muted); margin-left: -2px; }
+.bt-view .bt-psec-chev svg { width: 14px; height: 14px; }
+.bt-view .bt-psec-head:hover .bt-psec-chev { color: var(--text-normal); }
+.bt-view .bt-psec-menu {
+  display: inline-flex; align-items: center; margin-left: auto; padding: 2px 4px; border-radius: 5px;
+  color: var(--text-faint); opacity: 0; transition: opacity .12s; cursor: pointer;
+}
+.bt-view .bt-psec-menu svg { width: 15px; height: 15px; }
+.bt-view .bt-psec-head:hover .bt-psec-menu, .bt-view .bt-psec-menu:focus-visible { opacity: 1; }
+.bt-view .bt-psec-menu:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+/* Ablage beim Ziehen einer Aufgabe auf den Abschnittskopf – wie in der Seitenleiste. */
+.bt-view .bt-psec-head.is-drop-task {
+  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+.bt-view .bt-psec.is-sub { margin-left: 22px; margin-top: 1.4em; }
+.bt-view .bt-psec.is-sub .bt-section-title { font-weight: 650; color: var(--text-muted); }
+.bt-view .bt-psec.is-collapsed .bt-psec-desc,
+.bt-view .bt-psec.is-collapsed .bt-psec-add { display: none; }
+.bt-view .bt-psec.is-parent-collapsed { display: none; }
+.bt-view .bt-psec.is-loose .bt-section-title { color: var(--text-muted); }
+
+/* Beschreibung: gerendertes Markdown, leise; ein Klick daneben bearbeitet sie. */
+.bt-view .bt-psec-desc { margin: 4px 0 2px; font-size: 0.88em; color: var(--text-muted); cursor: pointer; overflow-wrap: anywhere; }
+.bt-view .bt-psec-desc > :first-child { margin-top: 0; }
+.bt-view .bt-psec-desc > :last-child { margin-bottom: 0; }
+
+/* „+ Aufgabe" am Ende eines Abschnitts und „+ Abschnitt" am Ende der Liste. */
+.bt-view .bt-psec-add, .bt-view .bt-psec-new {
+  display: inline-flex; align-items: center; gap: 6px; color: var(--text-faint);
+  font-size: var(--font-ui-small); cursor: pointer; border-radius: 6px;
+}
+.bt-view .bt-psec-add { margin: 6px 0 0 2px; }
+.bt-view .bt-psec-new { margin: 2.2em 0 1em; color: var(--text-muted); }
+.bt-view .bt-psec-add:hover, .bt-view .bt-psec-new:hover { color: var(--text-normal); }
+.bt-view .bt-psec-add .bt-add-icon { width: 14px; height: 14px; opacity: 0.8; }
+
+/* Abschnitte in Auswahl-Listen (Projekt-Wähler, „In Abschnitt verschieben"): eingerückt unter
+   ihrem Projekt, Unterabschnitte eine Stufe tiefer. */
+.bt-pop .bt-row.bt-row-sec { padding-left: 26px; }
+.bt-pop .bt-row.bt-row-sec2 { padding-left: 44px; }
+.bt-pop .bt-row.bt-row-sec .bt-row-ic svg, .bt-pop .bt-row.bt-row-sec2 .bt-row-ic svg { width: 13px; height: 13px; opacity: 0.7; }
+
+@media (pointer: coarse) {
+  .bt-view .bt-psec-menu { opacity: 1; padding: 10px; }
+  .bt-view .bt-psec-add, .bt-view .bt-psec-new { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .bt-view .bt-psec-menu { transition: none; } }

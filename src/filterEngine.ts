@@ -18,7 +18,9 @@ export type { CalMode };
 
 export type FilterRange = "any" | "today" | "overdue" | "next7" | "nodate";
 export type FilterSort = "smart" | "manual" | "due" | "deadline" | "priority" | "created" | "title";
-export type FilterGroup = "none" | "date" | "deadline" | "priority" | "label" | "project";
+/** „section" = Abschnitte der Projektseite (s. sections.ts). Nur dort sinnvoll und nur dort angeboten;
+ *  ohne Abschnitts-Definitionen (andere Seiten) liefert groupTasks dafür eine flache Liste. */
+export type FilterGroup = "none" | "date" | "deadline" | "priority" | "label" | "project" | "section";
 export type PageLayout = "list" | "board" | "calendar";
 /** Sortierrichtung. Gilt für die Aufgaben UND die Reihenfolge der Gruppen (eine Entscheidung).
  *  Bei „smart" bedeutungslos – dort wird sie im UI gar nicht erst angeboten. */
@@ -98,7 +100,7 @@ export const RANGES: FilterRange[] = ["any", "overdue", "today", "next7", "nodat
 export const SUBTASK_FILTERS: SubtaskFilter[] = ["any", "none", "only"];
 // „manual" steht neben „smart": beides sind Ordnungen ohne Feldvergleich, danach die Feld-Sortierungen.
 export const SORTS: FilterSort[] = ["smart", "manual", "due", "deadline", "priority", "created", "title"];
-export const GROUPS: FilterGroup[] = ["none", "date", "deadline", "priority", "label", "project"];
+export const GROUPS: FilterGroup[] = ["none", "date", "deadline", "priority", "label", "project", "section"];
 export const SORT_DIRS: SortDir[] = ["asc", "desc"];
 /** Alle je gespeicherten Werte – NUR für die Validierung beim Lesen (pageOptions): „standalone"
  *  muss lesbar bleiben (Board-Wahl, Alt-Seiten aus der Zeit, als die Liste es noch anbot). */
@@ -620,7 +622,9 @@ export interface TaskGroup { title: string; tasks: Task[]; }
  */
 export function groupTasks(tasks: Task[], group: FilterGroup, today: string,
   order?: { sort: FilterSort; sortDir: SortDir }, labelOrder?: string[]): TaskGroup[] {
-  if (group === "none") return [{ title: t("sec_tasks"), tasks }];
+  // „section" braucht die Abschnitte der Projektnotiz – die kennt diese Engine nicht. Die
+  // Projektseite gruppiert selbst (sections.groupBySection); überall sonst: flach wie „none".
+  if (group === "none" || group === "section") return [{ title: t("sec_tasks"), tasks }];
   // Reihenfolge der Label-Gruppen: die der Seitenleiste (Name/Anzahl/manuell), vom Aufrufer
   // fertig gereicht – sie hängt an Plugin-Zustand, den diese Engine bewusst nicht kennt.
   // Ohne Vorgabe bleibt es beim alphabetischen Tiebreaker über den Titel (alle Ränge gleich).

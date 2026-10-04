@@ -37,8 +37,26 @@ describe("describeRecurrence", () => {
     expect(describeRecurrence("FREQ=WEEKLY;BYDAY=SA,SU")).toBe("Am Wochenende");
   });
 
-  it("zählt eine eigene Tagesauswahl auf – dafür gibt es kein Wort", () => {
-    expect(describeRecurrence("FREQ=WEEKLY;BYDAY=MO,WE")).toBe("Montag, Mittwoch");
+  it("zählt eine eigene Tagesauswahl auf – im selben Satzmuster wie ein einzelner Tag", () => {
+    expect(describeRecurrence("FREQ=WEEKLY;BYDAY=MO,WE")).toBe("Jeden Montag und Mittwoch");
+    expect(describeRecurrence("FREQ=WEEKLY;BYDAY=MO,WE,FR")).toBe("Jeden Montag, Mittwoch und Freitag");
+    expect(describeRecurrence("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH")).toBe("Alle 2 Wochen am Dienstag und Donnerstag");
+  });
+
+  it("Werktage mit Intervall sind nicht „Werktags“", () => {
+    expect(describeRecurrence("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TU,WE,TH,FR")).toBe("Alle 2 Wochen am Montag, Dienstag, Mittwoch, Donnerstag und Freitag");
+  });
+
+  it("Russisch: Wochentage im Dativ Plural – „По средам“ statt des falschen „Каждый среда“", () => {
+    setLocale("ru");
+    try {
+      expect(describeRecurrence("FREQ=WEEKLY;BYDAY=WE")).toBe("По средам");
+      expect(describeRecurrence("FREQ=WEEKLY;BYDAY=TU,TH")).toBe("По вторникам и четвергам");
+      expect(describeRecurrence("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO")).toBe("Каждые 2 нед. по понедельникам");
+      expect(describeRecurrence("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")).toBe("По будням");
+    } finally {
+      setLocale("de");
+    }
   });
 
   it("benennt Monatsregeln", () => {

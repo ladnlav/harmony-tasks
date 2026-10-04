@@ -6,6 +6,11 @@ type Dict = Record<string, string>;
 
 const STRINGS: Record<string, Dict> = {
   en: {
+    sec_no_section: "No section", filter_group_section: "Section", psec_add: "Add section", psec_add_sub: "Add subsection", psec_edit: "Edit section", psec_new_title: "New section", psec_new_sub_title: "New subsection in “{0}”", psec_name_ph: "Section name", psec_desc_ph: "What belongs here? Markdown, [[ for notes", psec_delete_body: "Its tasks move up to the parent section or to “No section”. Subsections are removed with it.", psec_delete_with_tasks: "Move its {0} tasks to the trash instead", psec_move: "Move to section",
+    ov_title: "Overview", ov_progress: "{0}/{1} · {2}%", ov_no_tasks: "No tasks yet", ov_overdue: "overdue", ov_today: "today", ov_week: "next 7 days", ov_nodate: "no date", ov_filter_tip: "Show: {0}", ov_next: "Next up", ov_info: "Info & links", ov_info_edit: "Edit", ov_open_note: "Open project note", ov_info_empty: "Add links and key information…", ov_info_ph: "Links, notes, key facts — Markdown, [[ for notes", ov_info_conflict: "The project note changed in the meantime — open it to edit.", ov_more: "Show all", ov_less: "Show less", set_show_proj_overview: "Overview on project pages", set_show_proj_overview_desc: "Progress, upcoming dates and the info from the project note above the tasks of projects and areas.",
+    recur_days_on: "Every {0}", recur_edit: "Customize…", recur_edit_title: "Repeat", recur_ed_raw: "This rule uses options the editor doesn't cover ({0}). Save only if you want to replace it.", recur_ed_every: "Every", recur_unit_day: "Day", recur_unit_week: "Week", recur_unit_month: "Month", recur_unit_year: "Year", recur_ed_on_days: "On", recur_ed_month: "Day of the month", recur_ed_month_day: "Date", recur_ed_month_weekday: "Weekday", recur_pos_1: "First", recur_pos_2: "Second", recur_pos_3: "Third", recur_pos_4: "Fourth", recur_pos_last: "Last", recur_ed_end: "Ends", recur_end_never: "Never", recur_end_until: "On date", recur_end_count: "After", recur_end_times: "occurrences", recur_ed_preview: "Next dates",
+    recur_carried: "Subtasks carried over to the next occurrence: {0}",
+    checklist: "Checklist", checklist_add: "Add checklist", cl_add_item: "Add item", cl_delete_item: "Delete item", cl_progress: "Checklist: {0} of {1} done",
     view_today: "Today", view_upcoming: "Upcoming", view_recurring: "Recurring", view_done: "Done",
     status_todo: "To-Do", status_doing: "In progress", status_done: "Done", status_cancelled: "Cancelled",
     layout_list: "List", layout_board: "Board", menu_cancel_task: "Cancel task",
@@ -346,6 +351,11 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Display", panel_layout: "Layout", panel_show_done: "Show completed", panel_subtasks: "Sub-tasks", panel_subs_compact: "Compact", panel_subs_indented: "Indented", panel_subs_hide: "Hide", panel_subs_show: "Show", subtasks_progress: "{0} of {1} done", no_label: "No label", more_actions: "More",
   },
   de: {
+    sec_no_section: "Ohne Abschnitt", filter_group_section: "Abschnitt", psec_add: "Abschnitt hinzufügen", psec_add_sub: "Unterabschnitt hinzufügen", psec_edit: "Abschnitt bearbeiten", psec_new_title: "Neuer Abschnitt", psec_new_sub_title: "Neuer Unterabschnitt in „{0}“", psec_name_ph: "Name des Abschnitts", psec_desc_ph: "Was gehört hierher? Markdown, [[ für Notizen", psec_delete_body: "Seine Aufgaben rücken in den übergeordneten Abschnitt bzw. nach „Ohne Abschnitt“. Unterabschnitte gehen mit.", psec_delete_with_tasks: "Stattdessen seine {0} Aufgaben in den Papierkorb legen", psec_move: "In Abschnitt verschieben",
+    ov_title: "Überblick", ov_progress: "{0}/{1} · {2} %", ov_no_tasks: "Noch keine Aufgaben", ov_overdue: "überfällig", ov_today: "heute", ov_week: "in 7 Tagen", ov_nodate: "ohne Datum", ov_filter_tip: "Anzeigen: {0}", ov_next: "Als Nächstes", ov_info: "Infos & Links", ov_info_edit: "Bearbeiten", ov_open_note: "Projektnotiz öffnen", ov_info_empty: "Links und wichtige Infos hinzufügen …", ov_info_ph: "Links, Notizen, Wichtiges – Markdown, [[ für Notizen", ov_info_conflict: "Die Projektnotiz wurde inzwischen geändert – öffne sie zum Bearbeiten.", ov_more: "Alles zeigen", ov_less: "Weniger zeigen", set_show_proj_overview: "Überblick auf Projektseiten", set_show_proj_overview_desc: "Fortschritt, nächste Termine und die Infos aus der Projektnotiz über den Aufgaben von Projekten und Bereichen.",
+    recur_days_on: "Jeden {0}", recur_edit: "Anpassen…", recur_edit_title: "Wiederholung", recur_ed_raw: "Diese Regel nutzt Optionen, die der Editor nicht abbildet ({0}). Nur speichern, wenn sie ersetzt werden soll.", recur_ed_every: "Alle", recur_unit_day: "Tag", recur_unit_week: "Woche", recur_unit_month: "Monat", recur_unit_year: "Jahr", recur_ed_on_days: "An", recur_ed_month: "Tag im Monat", recur_ed_month_day: "Datum", recur_ed_month_weekday: "Wochentag", recur_pos_1: "Erster", recur_pos_2: "Zweiter", recur_pos_3: "Dritter", recur_pos_4: "Vierter", recur_pos_last: "Letzter", recur_ed_end: "Endet", recur_end_never: "Nie", recur_end_until: "Am Datum", recur_end_count: "Nach", recur_end_times: "Wiederholungen", recur_ed_preview: "Nächste Termine",
+    recur_carried: "Unteraufgaben in die nächste Runde übernommen: {0}",
+    checklist: "Checkliste", checklist_add: "Checkliste hinzufügen", cl_add_item: "Punkt hinzufügen", cl_delete_item: "Punkt löschen", cl_progress: "Checkliste: {0} von {1} erledigt",
     view_today: "Heute", view_upcoming: "Demnächst", view_recurring: "Wiederkehrend", view_done: "Erledigt",
     status_todo: "To-Do", status_doing: "In Arbeit", status_done: "Erledigt", status_cancelled: "Abgebrochen",
     layout_list: "Liste", layout_board: "Board", menu_cancel_task: "Abbrechen",
@@ -686,6 +696,8 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Anzeige", panel_layout: "Layout", panel_show_done: "Erledigte anzeigen", panel_subtasks: "Unteraufgaben", panel_subs_compact: "Kompakt", panel_subs_indented: "Eingerückt", panel_subs_hide: "Ausblenden", panel_subs_show: "Einblenden", subtasks_progress: "{0} von {1} erledigt", no_label: "Kein Label", more_actions: "Mehr",
   },
   es: {
+    filter_group_section: "Sección",
+    recur_days_on: "Cada {0}",
     view_today: "Hoy", view_upcoming: "Próximas", view_recurring: "Recurrentes", view_done: "Completadas",
     status_todo: "Por hacer", status_doing: "En curso", status_done: "Hecho", status_cancelled: "Cancelada",
     layout_list: "Lista", layout_board: "Tablero", menu_cancel_task: "Cancelar tarea",
@@ -1026,6 +1038,8 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Vista", panel_layout: "Diseño", panel_show_done: "Mostrar completadas", panel_subtasks: "Subtareas", panel_subs_compact: "Compacto", panel_subs_indented: "Sangrado", panel_subs_hide: "Ocultar", panel_subs_show: "Mostrar", subtasks_progress: "{0} de {1} completadas", no_label: "Sin etiqueta", more_actions: "Más",
   },
   pt: {
+    filter_group_section: "Seção",
+    recur_days_on: "Toda {0}",
     view_today: "Hoje", view_upcoming: "Próximas", view_recurring: "Recorrentes", view_done: "Concluídas",
     status_todo: "A fazer", status_doing: "Em andamento", status_done: "Feito", status_cancelled: "Cancelada",
     layout_list: "Lista", layout_board: "Quadro", menu_cancel_task: "Cancelar tarefa",
@@ -1366,6 +1380,8 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Exibição", panel_layout: "Layout", panel_show_done: "Mostrar concluídas", panel_subtasks: "Subtarefas", panel_subs_compact: "Compacto", panel_subs_indented: "Recuado", panel_subs_hide: "Ocultar", panel_subs_show: "Mostrar", subtasks_progress: "{0} de {1} concluídas", no_label: "Sem etiqueta", more_actions: "Mais",
   },
   fr: {
+    filter_group_section: "Section",
+    recur_days_on: "Chaque {0}",
     view_today: "Aujourd'hui", view_upcoming: "À venir", view_recurring: "Récurrentes", view_done: "Terminées",
     status_todo: "À faire", status_doing: "En cours", status_done: "Terminé", status_cancelled: "Annulée",
     layout_list: "Liste", layout_board: "Tableau", menu_cancel_task: "Annuler la tâche",
@@ -1706,6 +1722,8 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Affichage", panel_layout: "Disposition", panel_show_done: "Afficher les terminées", panel_subtasks: "Sous-tâches", panel_subs_compact: "Compact", panel_subs_indented: "Indenté", panel_subs_hide: "Masquer", panel_subs_show: "Afficher", subtasks_progress: "{0} sur {1} terminées", no_label: "Sans étiquette", more_actions: "Plus",
   },
   tr: {
+    filter_group_section: "Bölüm",
+    recur_days_on: "Her {0}",
     view_today: "Bugün", view_upcoming: "Yaklaşan", view_recurring: "Yinelenen", view_done: "Tamamlanan",
     status_todo: "Yapılacak", status_doing: "Devam ediyor", status_done: "Bitti", status_cancelled: "İptal edildi",
     layout_list: "Liste", layout_board: "Pano", menu_cancel_task: "Görevi iptal et",
@@ -2046,6 +2064,8 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Görünüm", panel_layout: "Düzen", panel_show_done: "Tamamlananları göster", panel_subtasks: "Alt görevler", panel_subs_compact: "Derli toplu", panel_subs_indented: "Girintili", panel_subs_hide: "Gizle", panel_subs_show: "Göster", subtasks_progress: "{1} görevden {0} tamamlandı", no_label: "Etiketsiz", more_actions: "Daha fazla",
   },
   zh: {
+    filter_group_section: "分区",
+    recur_days_on: "每{0}",
     view_today: "今天", view_upcoming: "即将到来", view_recurring: "重复", view_done: "已完成",
     status_todo: "待办", status_doing: "进行中", status_done: "完成", status_cancelled: "已取消",
     layout_list: "列表", layout_board: "看板", menu_cancel_task: "取消任务",
@@ -2386,6 +2406,11 @@ const STRINGS: Record<string, Dict> = {
     view_display: "显示", panel_layout: "布局", panel_show_done: "显示已完成", panel_subtasks: "子任务", panel_subs_compact: "紧凑", panel_subs_indented: "缩进", panel_subs_hide: "隐藏", panel_subs_show: "显示", subtasks_progress: "已完成 {0}/{1}", no_label: "无标签", more_actions: "更多",
   },
   ru: {
+    sec_no_section: "Без раздела", filter_group_section: "Раздел", psec_add: "Добавить раздел", psec_add_sub: "Добавить подраздел", psec_edit: "Изменить раздел", psec_new_title: "Новый раздел", psec_new_sub_title: "Новый подраздел в «{0}»", psec_name_ph: "Название раздела", psec_desc_ph: "Что сюда относится? Markdown, [[ для заметок", psec_delete_body: "Его задачи переместятся в родительский раздел или в «Без раздела». Подразделы удаляются вместе с ним.", psec_delete_with_tasks: "Вместо этого удалить его задачи ({0}) в корзину", psec_move: "Переместить в раздел",
+    ov_title: "Обзор", ov_progress: "{0}/{1} · {2}%", ov_no_tasks: "Задач пока нет", ov_overdue: "просрочено", ov_today: "сегодня", ov_week: "на неделе", ov_nodate: "без даты", ov_filter_tip: "Показать: {0}", ov_next: "Ближайшее", ov_info: "Информация и ссылки", ov_info_edit: "Изменить", ov_open_note: "Открыть заметку проекта", ov_info_empty: "Добавьте ссылки и важную информацию…", ov_info_ph: "Ссылки, заметки, важное — Markdown, [[ для заметок", ov_info_conflict: "Заметка проекта изменилась — откройте её, чтобы отредактировать.", ov_more: "Показать полностью", ov_less: "Свернуть", set_show_proj_overview: "Обзор на страницах проектов", set_show_proj_overview_desc: "Прогресс, ближайшие сроки и информация из заметки проекта над задачами проектов и областей.",
+    recur_days_on: "По {0}", recur_edit: "Настроить…", recur_edit_title: "Повтор", recur_ed_raw: "Это правило использует параметры, которых нет в редакторе ({0}). Сохраняйте, только если хотите его заменить.", recur_ed_every: "Каждые", recur_unit_day: "День", recur_unit_week: "Неделя", recur_unit_month: "Месяц", recur_unit_year: "Год", recur_ed_on_days: "Дни недели", recur_ed_month: "День месяца", recur_ed_month_day: "Число", recur_ed_month_weekday: "День недели", recur_pos_1: "Первый", recur_pos_2: "Второй", recur_pos_3: "Третий", recur_pos_4: "Четвёртый", recur_pos_last: "Последний", recur_ed_end: "Окончание", recur_end_never: "Никогда", recur_end_until: "До даты", recur_end_count: "После", recur_end_times: "повторений", recur_ed_preview: "Ближайшие даты",
+    recur_carried: "Подзадачи перенесены в следующий повтор: {0}",
+    checklist: "Чек-лист", checklist_add: "Добавить чек-лист", cl_add_item: "Добавить пункт", cl_delete_item: "Удалить пункт", cl_progress: "Чек-лист: выполнено {0} из {1}",
     view_today: "Сегодня", view_upcoming: "Предстоящие", view_recurring: "Повторяющиеся", view_done: "Выполнено",
     status_todo: "К выполнению", status_doing: "В процессе", status_done: "Готово", status_cancelled: "Отменена",
     layout_list: "Список", layout_board: "Доска", menu_cancel_task: "Отменить задачу",
@@ -2403,8 +2428,8 @@ const STRINGS: Record<string, Dict> = {
     wn_link_t: "Ссылки на заметки через [[", wn_link_d: "В описании задачи и в комментариях ввод «[[» теперь подсказывает подходящие заметки: наберите несколько букв, выберите нужную — готово. Ссылка записывается ровно так, как её записал бы Obsidian, и остаётся кликабельной в списке.",
     set_field_labels: "Метки", set_field_labels_desc: "Поле с метками задачи. Если указать `tags`, ваши метки станут настоящими тегами Obsidian — они появятся на его панели тегов, и другие программы их найдут. Взамен любой тег на заметке задачи тоже считается меткой.", set_field_confirm_labels: "BeautyTasks будет читать метки из {0}, а не из {1}. Будет перенесено задач: {2}; старое поле останется, если вы не удалите его ниже.",
     wn_recurmore_t: "Повторы стали умнее", wn_recurmore_d: "Только по будням, каждый второй вторник, последняя пятница месяца, с датой окончания. BeautyTasks понимает теперь правила стандарта iCalendar — тот же язык, на котором говорят Google и Outlook.", wn_recurtype_t: "Просто напишите правило", wn_recurtype_d: "Введите «every second Monday» или «last Friday of the month» — в названии задачи или в меню повтора. Предпросмотр сразу показывает, как это понято.", wn_recurplain_t: "Вашими словами, а не правилом", wn_recurplain_d: "Хранится машиночитаемо, показывается по-человечески: «Каждые 2 нед. во вторник» вместо строки, понятной только календарю.",
-    recur_custom: "Своё правило", recur_custom_ph: "напр. every second Monday", recur_custom_hint: "Также: «every 3 days», «last Friday of the month», «on the 15th of each month»",
-    recur_n_days: "Каждые {0} дн.", recur_n_weeks: "Каждые {0} нед.", recur_n_months: "Каждые {0} мес.", recur_n_years: "Каждые {0} г.", recur_weekdays: "По будням", recur_weekend: "По выходным", recur_every_weekday: "Каждый {0}", recur_n_weeks_on: "Каждые {0} нед. в {1}", recur_last_weekday_month: "Последний {0} месяца", recur_nth_weekday_month: "{0}-й {1} месяца", recur_monthday: "{0}-го числа каждого месяца", recur_until: "до {0}", recur_count: "ещё {0} раз",
+    recur_custom: "Своё правило", recur_custom_ph: "напр. каждый вторник и четверг", recur_custom_hint: "Также: «каждые 3 дня», «по будням», «в последнюю пятницу месяца», «15 числа каждого месяца»",
+    recur_n_days: "Каждые {0} дн.", recur_n_weeks: "Каждые {0} нед.", recur_n_months: "Каждые {0} мес.", recur_n_years: "Каждые {0} г.", recur_weekdays: "По будням", recur_weekend: "По выходным", recur_every_weekday: "Каждый {0}", recur_n_weeks_on: "Каждые {0} нед. по {1}", recur_last_weekday_month: "Последний {0} месяца", recur_nth_weekday_month: "{0}-й {1} месяца", recur_monthday: "{0}-го числа каждого месяца", recur_until: "до {0}", recur_count: "ещё {0} раз",
     wn_statusid_t: "Значения статусов на ваш выбор", wn_statusid_d: "Отображаемое имя статуса и значение в ваших заметках теперь настраиваются отдельно. Читайте «В работе» и всё равно записывайте именно то значение, которое ждёт другая программа.",
     status_edit_id: "Изменить сохранённое значение", status_id_hint: "Значение хранится во frontmatter ваших заметок. Его читают другие программы — имя выше только для отображения.", status_id_confirm_title: "Изменить сохранённое значение?", status_id_confirm: "Будет перезаписано задач: {0}. `status: {1}` станет `status: {2}`. Фильтры и порядок колонок обновятся. Отображаемое имя «{3}» не изменится.", status_id_apply: "Изменить", status_id_done: "Перезаписано задач: {0}.", status_id_bad: "Только буквы, цифры, дефис и подчёркивание. Должно начинаться с буквы.", status_id_taken: "Это значение уже занято другим статусом.",
     btn_move_up: "Вверх", btn_move_down: "Вниз",
@@ -2726,6 +2751,8 @@ const STRINGS: Record<string, Dict> = {
     view_display: "Вид", panel_layout: "Макет", panel_show_done: "Показывать выполненные", panel_subtasks: "Подзадачи", panel_subs_compact: "Компактно", panel_subs_indented: "С отступом", panel_subs_hide: "Скрыть", panel_subs_show: "Показать", subtasks_progress: "{0} из {1} выполнено", no_label: "Без метки", more_actions: "Ещё",
   },
   ja: {
+    filter_group_section: "セクション",
+    recur_days_on: "毎週{0}",
     view_today: "今日", view_upcoming: "近日予定", view_recurring: "繰り返し", view_done: "完了",
     status_todo: "未着手", status_doing: "進行中", status_done: "完了", status_cancelled: "キャンセル済み",
     layout_list: "リスト", layout_board: "ボード", menu_cancel_task: "タスクをキャンセル",
@@ -3066,6 +3093,8 @@ const STRINGS: Record<string, Dict> = {
     view_display: "表示", panel_layout: "レイアウト", panel_show_done: "完了を表示", panel_subtasks: "サブタスク", panel_subs_compact: "コンパクト", panel_subs_indented: "インデント", panel_subs_hide: "非表示", panel_subs_show: "表示", subtasks_progress: "{1} 件中 {0} 件完了", no_label: "ラベルなし", more_actions: "その他",
   },
   it: {
+    filter_group_section: "Sezione",
+    recur_days_on: "Ogni {0}",
     view_today: "Oggi", view_upcoming: "Prossime", view_recurring: "Ricorrenti", view_done: "Completate",
     status_todo: "Da fare", status_doing: "In corso", status_done: "Fatto", status_cancelled: "Annullata",
     layout_list: "Elenco", layout_board: "Bacheca", menu_cancel_task: "Annulla attività",

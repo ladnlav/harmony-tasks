@@ -26,6 +26,8 @@ const BASIS: Task = {
   recurrence: "FREQ=DAILY", recurBasis: "due", reminders: ["-30m"],
   sortOrder: 10, created: "2026-08-01T10:00:00",
   completed: null, cancelled: null, externalId: "x-1",
+  checklist: [{ text: "Punkt", done: false }],
+  section: "s-1",
 };
 
 const ELTERN: Task = { ...BASIS, id: "t-0", path: "Items/eltern.md", title: "Elternaufgabe", parent: null };
@@ -54,7 +56,9 @@ function anders(wert: unknown): unknown {
   if (typeof wert === "string") return wert + "-X";
   if (typeof wert === "number") return wert + 1;
   if (typeof wert === "boolean") return !wert;
-  if (Array.isArray(wert)) return [...wert, "zusatz"];
+  // Listen von Objekten (Checkliste) bekommen ein Objekt derselben Form – ein String darin wäre
+  // ein Wert, den es so nie gibt, und kein Beleg dafür, dass die Signatur die Liste abdeckt.
+  if (Array.isArray(wert)) return [...wert, typeof wert[0] === "object" && wert[0] !== null ? { text: "zusatz", done: false } : "zusatz"];
   return "gesetzt";   // war null
 }
 

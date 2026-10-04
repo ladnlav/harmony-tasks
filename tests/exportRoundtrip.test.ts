@@ -18,6 +18,7 @@ const AUFGABE: Task = {
   labels: ["ui", "bug"], description: "Beschreibung",
   recurrence: "jeden Montag", recurBasis: "done", reminders: ["-PT30M"],
   created: "2026-07-01T08:00:00", completed: null, cancelled: null, externalId: "ext-1",
+  checklist: [{ text: "Erster Punkt", done: true }, { text: "Zweiter Punkt", done: false }],
 };
 
 const LISTE: ProjItem = {
@@ -49,6 +50,21 @@ describe("Aufgabe → Export → Frontmatter", () => {
     expect(fm.created).toBe("2026-07-01T08:00:00");
     expect(fm.external_id).toBe("ext-1");
     expect(fm.description).toBe("Beschreibung");
+  });
+
+  it("nimmt die Checkliste mit – samt Zustand der Punkte (v4)", () => {
+    expect(toExportTask(AUFGABE).checklist).toEqual(["[x] Erster Punkt", "[ ] Zweiter Punkt"]);
+    expect(fmOf(AUFGABE).checklist).toEqual(["[x] Erster Punkt", "[ ] Zweiter Punkt"]);
+  });
+
+  it("nimmt den Abschnitt mit – nur zusammen mit einem Projekt (v4)", () => {
+    expect(fmOf({ ...AUFGABE, section: "s-d" }).section).toBe("s-d");
+    expect(fmOf({ ...AUFGABE, section: "s-d", project: null }).section).toBeNull();   // Kennung gilt nur im Projekt
+  });
+
+  it("ohne Checkliste entsteht kein Feld", () => {
+    expect(toExportTask({ ...AUFGABE, checklist: [] }).checklist).toBeUndefined();
+    expect(fmOf({ ...AUFGABE, checklist: [] }).checklist).toEqual([]);   // [] verwirft buildFrontmatter
   });
 
   it("nimmt die manuelle Reihenfolge mit – der Fall, für den v3 gebaut wurde", () => {
@@ -96,6 +112,17 @@ describe("Liste → Export → Frontmatter", () => {
     expect(toExportList({ ...LISTE, type: "area", icon: "circle-small" }).icon).toBeNull();
     expect(toExportList({ ...LISTE, icon: "folder" }).icon).toBeNull();
     expect(toExportList({ ...LISTE, icon: "sprout" }).icon).toBe("sprout");   // selbst gesetzt bleibt
+  });
+
+  it("Abschnitte reisen mit der Liste (v4)", () => {
+    const mit: ProjItem = { ...LISTE, sections: [
+      { id: "s-d", name: "Design", description: "Entwürfe", parent: null },
+      { id: "s-w", name: "Wireframes", description: "", parent: "s-d" },
+    ] };
+    const el = toExportList(mit);
+    expect(el.sections).toEqual([{ id: "s-d", name: "Design", description: "Entwürfe" }, { id: "s-w", name: "Wireframes", parent: "s-d" }]);
+    expect(importedListFrontmatter(el, "type").sections).toEqual(el.sections);
+    expect(toExportList({ ...LISTE, sections: [] }).sections).toBeUndefined();
   });
 
   it("schreibt keine leeren Felder", () => {

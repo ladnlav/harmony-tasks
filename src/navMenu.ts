@@ -13,6 +13,7 @@ import { listFilters } from "./filterService";
 import { ApplyTemplateModal, promptNewTemplate } from "./templateModal";
 import { TaskModal } from "./taskModal";
 import { openTaskNote } from "./taskService";
+import { createSection } from "./sectionView";
 import { deleteTemplate, listTemplates, refreshTemplates, renameTemplate, templateEditScope, TemplateInfo } from "./templateService";
 import { t } from "./i18n";
 
@@ -180,6 +181,13 @@ export function buildItemMenu(menu: Menu, plugin: BeautyTasksPlugin, item: NavMe
   menu.addItem((m) => m.setSection("bt-edit").setTitle(t("btn_rename")).setIcon("text-cursor-input")
     .onClick(() => new PromptModal(plugin.app, { title: t("btn_rename"), value: item.name },
       (v) => renameItem(plugin, item, v)).open()));
+
+  // — Abschnitt hinzufügen — (Projekte/Bereiche): der Weg zum ERSTEN Abschnitt. Danach steht
+  // „+ Abschnitt hinzufügen" auch am Ende der Projektliste.
+  if (isProjLike) {
+    menu.addItem((m) => m.setSection("bt-edit").setTitle(t("psec_add")).setIcon("list-plus")
+      .onClick(() => createSection(plugin, item.key)));
+  }
 
   // — Als Vorlage speichern — (nur Projekte/Bereiche; Labels und Filter haben keine Aufgaben,
   // die man mitnehmen könnte). Nimmt das Projekt samt aller Aufgabenbäume auf.

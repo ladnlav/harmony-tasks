@@ -114,12 +114,22 @@ export function shiftReminder(raw: string, days: number): string {
  */
 export function planTemplateDates(items: readonly DatedItem[], anchorIso: string | null, mode: AnchorMode): Map<string, ShiftedDates> {
   const shift = anchorIso ? templateShift(items, anchorIso, mode) : null;
+  return shiftDates(items, shift ?? 0);
+}
+
+/**
+ * Alle Daten eines Baums um denselben Betrag verschieben – der eine Rechenweg, den Vorlagen UND
+ * Wiederholungen teilen (s. recurCarry.ts): Die Abstände zwischen den Aufgaben bleiben erhalten,
+ * relative Erinnerungen wandern mit der Fälligkeit, absolute werden mitverschoben (shiftReminder).
+ * `days = 0` gibt die Daten unverändert (als Kopie) zurück.
+ */
+export function shiftDates(items: readonly DatedItem[], days: number): Map<string, ShiftedDates> {
   const out = new Map<string, ShiftedDates>();
   for (const it of items) {
-    out.set(it.path, shift === null || shift === 0 ? { due: it.due, scheduled: it.scheduled, reminders: [...it.reminders] } : {
-      due: it.due ? addDays(it.due, shift) : null,
-      scheduled: it.scheduled ? addDays(it.scheduled, shift) : null,
-      reminders: it.reminders.map((r) => shiftReminder(r, shift)),
+    out.set(it.path, days === 0 ? { due: it.due, scheduled: it.scheduled, reminders: [...it.reminders] } : {
+      due: it.due ? addDays(it.due, days) : null,
+      scheduled: it.scheduled ? addDays(it.scheduled, days) : null,
+      reminders: it.reminders.map((r) => shiftReminder(r, days)),
     });
   }
   return out;

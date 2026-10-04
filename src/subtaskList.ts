@@ -16,6 +16,7 @@ import { renderCheck, installCheckDelegation } from "./taskCheck";
 import { formatReminder } from "./reminders";
 import { isDone, isTrashed } from "./statuses";
 import { sortSubtasks } from "./filterEngine";
+import { checklistProgress } from "./checklist";
 import { t } from "./i18n";
 import { tip } from "./tooltip";
 
@@ -100,7 +101,10 @@ export class SubtaskList {
   }
 
   private signature(): string {
-    return this.children().map((k) => [k.path, k.status, k.title, k.due ?? "", k.priority].join("~")).join("|");
+    return this.children().map((k) => {
+      const cl = checklistProgress(k.checklist);
+      return [k.path, k.status, k.title, k.due ?? "", k.priority, cl ? cl.done + "/" + cl.total : ""].join("~");
+    }).join("|");
   }
 
   render(): void {
@@ -216,6 +220,14 @@ export class SubtaskList {
       tip(badge, t("subtasks_progress", gDone, grand.length));
       setIcon(badge.createSpan({ cls: "bt-st-kids-ic" }), "list-checks");
       badge.createSpan({ text: gDone + "/" + grand.length });
+    }
+    // Checkliste der Unteraufgabe nur als Zahl – abgehakt wird in ihrem eigenen Modal.
+    const cl = checklistProgress(kid.checklist);
+    if (cl) {
+      const badge = meta().createSpan({ cls: "bt-st-kids" });
+      tip(badge, t("cl_progress", cl.done, cl.total));
+      setIcon(badge.createSpan({ cls: "bt-st-kids-ic" }), "list-todo");
+      badge.createSpan({ text: cl.done + "/" + cl.total });
     }
 
     const del = row.createEl("button", { cls: "bt-st-del" });

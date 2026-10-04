@@ -17,6 +17,8 @@ import { t } from "./i18n";
 import { tip, tipWhenClipped, isClipped } from "./tooltip";
 import { firstOccurrence } from "./recurrence";
 import { describeRecurrence } from "./recurrenceText";
+import { weekdayOf } from "./recurrenceBuilder";
+import { RecurrenceModal } from "./recurrenceModal";
 import { parseQuickEntry } from "./quickEntry";
 
 
@@ -170,21 +172,37 @@ function openRecur(host: ChipHost, anchor: HTMLElement): void {
   const f = host.f;
   openPopover(anchor, (pop, close) => {
     pop.addClass("bt-recur");
+    /** Regel übernehmen. Eine Wiederholung braucht einen Anker: ohne Datum liefert recurrence.ts
+     *  keine naechste Instanz (nextInstance: ohne due UND scheduled -> null). Der Chip zeigte dann
+     *  „Taeglich" an, ohne dass je etwas wiederkehrt. Genau wie bei der Texterkennung: ohne Datum
+     *  heute. pinDue, weil das hier eine Handauswahl ist – der Titel soll es nicht ueberschreiben. */
+    const apply = (rule: string): void => {
+      f.recurrence = rule;
+      if (!f.due) { f.due = todayIso(); host.pinDue(); }
+      f.due = firstOccurrence(rule, f.due) ?? f.due;
+      host.rerender();
+    };
     const render = () => {
       pop.empty();
       popRow(pop, "x", t("recur_none"), () => { f.recurrence = null; host.rerender(); close(); }, !f.recurrence);
       for (const r of RECUR) {
-        popRow(pop, "refresh-ccw", t(r.key), () => {
-          f.recurrence = r.val;
-          // Eine Wiederholung braucht einen Anker: ohne Datum liefert recurrence.ts keine naechste
-          // Instanz (nextInstance: ohne due UND scheduled -> null). Der Chip zeigte dann „Taeglich"
-          // an, ohne dass je etwas wiederkehrt. Genau wie bei der Texterkennung: ohne Datum heute.
-          // pinDue, weil das hier eine Handauswahl ist – der Titel soll es nicht ueberschreiben.
-          if (!f.due) { f.due = todayIso(); host.pinDue(); }
-          f.due = firstOccurrence(r.val, f.due) ?? f.due;
-          host.rerender(); render();
-        }, f.recurrence === r.val);
+        popRow(pop, "refresh-ccw", t(r.key), () => { apply(r.val); render(); }, f.recurrence === r.val);
       }
+      // Zwei Vorlagen, die vom Datum abhängen: „Werktags" und „Jeden <Wochentag des Datums>" –
+      // die häufigsten Regeln, für die man sonst den Editor öffnen müsste.
+      const wdRule = "FREQ=WEEKLY;BYDAY=" + ["MO", "TU", "WE", "TH", "FR", "SA", "SU"][weekdayOf(f.due ?? todayIso())];
+      for (const extra of [{ val: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", label: t("recur_weekdays") }, { val: wdRule, label: describeRecurrence(wdRule) }]) {
+        popRow(pop, "refresh-ccw", extra.label, () => { apply(extra.val); render(); }, f.recurrence === extra.val);
+      }
+      // Der volle Editor: Tage, Intervall, Monatsregeln, Ende. Das Popover schliesst vorher – das
+      // Modal legt sich über den Aufgaben-Editor und schreibt beim Speichern in dieselben Felder.
+      popRow(pop, "sliders-horizontal", t("recur_edit"), () => {
+        close();
+        new RecurrenceModal(host.app, { rule: f.recurrence ?? null, basis: f.recurBasis ?? "due", due: f.due ?? null }, (r) => {
+          f.recurBasis = r.basis;
+          apply(r.rule);
+        }).open();
+      }).addClass("bt-row-action");
       // Eigene Regel eintippen. Nutzt dieselbe Erkennung wie der Aufgabentitel – wer „jeden
       // zweiten Montag" schreiben kann, soll es nicht zweimal lernen muessen. Die Vorschau zeigt
       // die GEDEUTETE Regel, nicht die Eingabe: So sieht man vor dem Uebernehmen, ob verstanden
@@ -204,11 +222,9 @@ function openRecur(host: ChipHost, anchor: HTMLElement): void {
         e.preventDefault();
         const r = readRule();
         if (!r) return;                       // nicht verstanden -> Feld bleibt offen, Hinweis steht da
-        f.recurrence = r;
         // Die Regel bestimmt den ersten Termin, nicht das zufaellig eingestellte Datum.
-        if (!f.due) { f.due = todayIso(); host.pinDue(); }
-        f.due = firstOccurrence(r, f.due) ?? f.due;
-        host.rerender(); render();
+        apply(r);
+        render();
       };
       update();
 

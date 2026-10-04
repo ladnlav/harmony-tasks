@@ -4,6 +4,7 @@ import { combineDT, formatDateTime, formatDeadline, dueWhen, dueDist } from "./f
 import { formatReminder } from "./reminders";
 import { isInboxLink, baseName } from "./taskService";
 import { projectDisplayName } from "./i18n";
+import { checklistProgress } from "./checklist";
 
 /**
  * WAS eine Aufgaben-Zeile zeigt – ohne zu zeichnen.
@@ -54,6 +55,7 @@ export interface RowPlan {
   labels: string[];
   comments: number | null;
   subs: { done: number; total: number; open: boolean } | null;
+  checklist: { done: number; total: number } | null;
   backlink: { inbox: boolean; text: string } | null;
   trashActions: boolean;
 }
@@ -136,6 +138,8 @@ export function rowPlan(i: RowPlanInput): RowPlan {
     subs: !trash && kids.length
       ? { done: kids.filter((k) => isDone(k.status)).length, total: kids.length, open: !i.flat && !!i.expanded }
       : null,
+    // Checkliste wie das Unteraufgaben-Badge: Fortschritt „erledigt/gesamt", nicht im Papierkorb.
+    checklist: trash ? null : checklistProgress(t.checklist),
     backlink,
     trashActions: trash,
   };

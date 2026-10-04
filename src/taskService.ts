@@ -1,6 +1,8 @@
 import { App, Notice, TFile, normalizePath, stringifyYaml } from "obsidian";
-import { BeautyTasksSettings, Priority, Task, TaskStatus } from "./types";
+import { BeautyTasksSettings, ChecklistItem, Priority, Task, TaskStatus } from "./types";
 import type { ShiftedDates } from "./templatePlan";
+import { serializeChecklist } from "./checklist";
+import { SectionDef, readSections, writeSections } from "./sections";
 import { combineDT, localStamp } from "./format";
 import { firstOpenStatus, isDone, isTrashed } from "./statuses";
 import { titleKey, fmTitle, findH1Line, replaceHeadingLine, renameHeadingLine, newTaskBody } from "./taskTitle";
@@ -104,6 +106,8 @@ export interface TaskFields {
   sortOrder?: number | null; // manuelle Position (sort_order). Normalfall: weglassen -> lazy, kein
                              // Feld. Nur gesetzt, wenn eine Reihenfolge bewusst materialisiert wird
                              // (z. B. beim Duplizieren eines Unterbaums), s. filterEngine.planReorder.
+  checklist?: ChecklistItem[];   // Checkliste (s. checklist.ts); leer = kein Feld
+  section?: string | null;       // Abschnitt im Projekt (Kennung, s. sections.ts); null = keiner
 }
 
 /**
@@ -221,6 +225,9 @@ export interface DuplicateOpts {
    * lösen wir sie wieder von ihr.
    */
   detachTop?: boolean;
+  /** Welche Kinder kopiert werden – auf JEDER Ebene; ein ausgelassenes nimmt seinen Unterbaum mit.
+   *  Fehlt = alle sichtbaren. Gesetzt bei der Wiederholung (s. recurCarry.carriesOver). */
+  pick?: (kid: Task) => boolean;
   /** Intern: bereits besuchte Pfade (Kreis-Schutz). Nicht von aussen setzen. */
   seen?: Set<string>;
 }
@@ -253,6 +260,10 @@ export async function createTaskNote(app: App, settings: BeautyTasksSettings, f:
     scheduled: f.scheduled ? combineDT(f.scheduled, f.scheduledTime) : null,
     duration: f.duration ?? null,
     project: f.project ? "[[" + f.project + "]]" : null,
+    // Abschnitt nur MIT Projekt: Die Kennung gilt allein innerhalb ihres Projekts. Ausnahme sind
+    // Vorlagen (eigenes `target`): Deren Aufgaben stehen ohne Projekt und tragen die Kennung bis
+    // zum Anwenden, wo sie wieder ein Projekt bekommen (s. saveProjectAsTemplate).
+    section: f.section && (f.project || target) ? f.section : null,
     parent: f.parent ? "[[" + f.parent + "]]" : null,
     [fieldKey("labels")]: f.labels ?? [],
     recurrence: f.recurrence ?? null,
@@ -264,6 +275,7 @@ export async function createTaskNote(app: App, settings: BeautyTasksSettings, f:
     // behalten ihr reines Datum – der Vergleich in sortTasks kommt mit beidem zurecht.
     created: jetzt,
     description: (f.description ?? "").trim() || null,   // Beschreibung im Frontmatter, nicht im Body
+    checklist: serializeChecklist(f.checklist),            // [] -> von buildFrontmatter verworfen
   });
   return app.vault.create(dest, fm + newTaskBody(f.title, f.titleInFrontmatter !== false));
 }
@@ -343,6 +355,7 @@ export interface ProjItem {
   name: string; path: string; icon: string; color: string | null;
   type: "project" | "area"; hidden: boolean; archived: boolean;
   description: string;   // kurze Beschreibung aus dem Frontmatter (Body bleibt dem Nutzer)
+  sections: SectionDef[];   // Abschnitte (Frontmatter `sections`, s. sections.ts)
 }
 
 const byName = (a: ProjItem, b: ProjItem) => a.name.localeCompare(b.name, "de");
@@ -402,10 +415,30 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
       color: typeof fm?.color === "string" ? fm.color : null,
       description: typeof fm?.description === "string" ? fm.description : "",
       hidden: !!fm?.nav_hidden, archived: fm?.status === "archived",
+      sections: readSections(fm?.sections),
     }];
   }));
 
 function allProjItems(app: App): ProjItem[] { return projScan.get(app); }
+
+/** Abschnitte eines Projekts/Bereichs (Pfad). Leer, wenn es keine hat oder kein Projekt ist. */
+export function projectSections(app: App, path: string | null | undefined): SectionDef[] {
+  return path ? allProjItems(app).find((p) => p.path === path)?.sections ?? [] : [];
+}
+
+/** Dasselbe über den Basenamen – so verweisen Editor und Vorlagen auf Projekte. */
+export function projectSectionsByName(app: App, name: string | null | undefined): SectionDef[] {
+  return name ? allProjItems(app).find((p) => p.name === name)?.sections ?? [] : [];
+}
+
+/** Abschnitte eines Projekts/Bereichs schreiben. Eine leere Liste entfernt das Feld. */
+export async function setProjectSections(app: App, path: string, defs: readonly SectionDef[]): Promise<void> {
+  const file = app.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) return;
+  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+    if (defs.length) fm.sections = writeSections(defs); else delete fm.sections;
+  });
+}
 
 /** Eingang + Bereiche + Projekte (ohne Archivierte) für Picker/Nav. „hidden" bleibt drin;
  *  die Nav filtert es selbst, der Aufgaben-Picker zeigt es weiterhin. */
@@ -448,14 +481,14 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
 
 /** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen
  *  zurück. Bereiche entstehen sonst per Umwandeln eines Projekts (setProjectType). */
-export async function createProjectNote(app: App, settings: BeautyTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = ""): Promise<string> {
+export async function createProjectNote(app: App, settings: BeautyTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", sections: readonly SectionDef[] = []): Promise<string> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
   const base = slugify(name);
   let dest = normalizePath(folder + "/" + base + ".md");
   let n = 2;
   while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(folder + "/" + base + " " + n + ".md"); n++; if (n > 200) break; }
-  const fm = buildFrontmatter({ [fieldKey("type")]: asArea ? "area" : "project", id: newId("p"), status: "active", color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: todayIso() });
+  const fm = buildFrontmatter({ [fieldKey("type")]: asArea ? "area" : "project", id: newId("p"), status: "active", color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: todayIso(), sections: sections.length ? writeSections(sections) : undefined });
   // Kein „# Name" mehr im Body: Der Name kommt aus dem Dateinamen, die Überschrift wäre redundant –
   // und der Body gehört ab hier vollständig dem Nutzer (s. „Projektnotiz öffnen").
   await app.vault.create(dest, fm + "\n");

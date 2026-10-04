@@ -16,6 +16,21 @@ function weekdayName(i: number): string {
   return new Intl.DateTimeFormat(getLocale(), { weekday: "long", timeZone: "UTC" }).format(d);
 }
 
+/** Russisch im Dativ Plural („по вторникам"), rrule-Reihenfolge Mo … So. */
+const RU_DAT_PL = ["понедельникам", "вторникам", "средам", "четвергам", "пятницам", "субботам", "воскресеньям"];
+
+/** Wochentage als Aufzählung („Dienstag und Donnerstag") – die Verbindung kommt von Intl, damit
+ *  jede Sprache ihr eigenes „und" bekommt. Ohne Intl.ListFormat (ältere Mobil-WebViews) mit Komma. */
+function dayList(set: number[]): string {
+  const names = set.map((i) => (getLocale() === "ru" ? RU_DAT_PL[i] : weekdayName(i)));
+  // Über einen Typ-Umweg: Intl.ListFormat gehört zu ES2021, das Projekt kompiliert gegen ES2020.
+  const ListFormat = (Intl as unknown as { ListFormat?: new (loc: string, o: { style: string; type: string }) => { format(items: string[]): string } }).ListFormat;
+  try {
+    if (ListFormat) return new ListFormat(getLocale(), { style: "long", type: "conjunction" }).format(names);
+  } catch { /* unbekannte Sprache o. Ä. -> Komma */ }
+  return names.join(", ");
+}
+
 const localDate = (d: Date): string =>
   new Intl.DateTimeFormat(getLocale(), { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "UTC" }).format(d);
 
@@ -48,9 +63,13 @@ function describeBase(opts: Partial<Options>): string | null {
   const mdays = Array.isArray(opts.bymonthday) ? opts.bymonthday : opts.bymonthday != null ? [opts.bymonthday] : [];
 
   if (unit === "week" && wds.length) {
-    const set = wds.map((w) => w.wd).sort((a, b) => a - b);
-    if (set.length === 5 && set.join() === "0,1,2,3,4") return t("recur_weekdays");
-    if (set.length === 2 && set.join() === "5,6") return t("recur_weekend");
+    const set = [...new Set(wds.map((w) => w.wd))].sort((a, b) => a - b);
+    // Nur ohne Intervall: „Alle 2 Wochen werktags" ist nicht „Werktags".
+    if (n === 1 && set.join() === "0,1,2,3,4") return t("recur_weekdays");
+    if (n === 1 && set.join() === "5,6") return t("recur_weekend");
+    // Russisch: Intl kennt nur den Nominativ, „Каждый среда" wäre falsch. „По средам" (Dativ
+    // Plural) ist dort ohnehin die übliche Form für Wiederkehrendes und hängt an keinem Geschlecht.
+    if (getLocale() === "ru") return n === 1 ? t("recur_days_on", dayList(set)) : t("recur_n_weeks_on", n, dayList(set));
     if (set.length === 1) {
       const name = weekdayName(set[0]);
       // Ab Intervall 2 bewusst NICHT „Jeden 2. Dienstag": Das liest sich wie der zweite Dienstag
@@ -59,7 +78,8 @@ function describeBase(opts: Partial<Options>): string | null {
       // JavaScript ohnehin nicht ausschreiben (Intl kennt kein RBNF).
       return n === 1 ? t("recur_every_weekday", name) : t("recur_n_weeks_on", n, name);
     }
-    return set.map(weekdayName).join(", ");   // eigene Auswahl: aufzählen statt deuten
+    // Eigene Auswahl („Di und Do"): als Aufzählung im selben Satzmuster wie ein einzelner Tag.
+    return n === 1 ? t("recur_days_on", dayList(set)) : t("recur_n_weeks_on", n, dayList(set));
   }
 
   if (unit === "month" && wds.length === 1 && wds[0].n != null) {
