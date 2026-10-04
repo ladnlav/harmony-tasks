@@ -125,6 +125,15 @@ describe("Liste → Export → Frontmatter", () => {
     expect(toExportList({ ...LISTE, sections: [] }).sections).toBeUndefined();
   });
 
+  it("Unterprojekte nehmen ihren Elter mit (v5)", () => {
+    const kind: ProjItem = { ...LISTE, name: "Küche", path: "BeautyTasks/Projects/Küche.md", parent: "BeautyTasks/Projects/Haus.md" };
+    const el = toExportList(kind);
+    expect(el.parent).toBe("Haus");
+    expect(importedListFrontmatter(el, "type").parent).toBe("[[Haus]]");
+    expect(importedListFrontmatter({ ...el, type: "area" }, "type").parent).toBeUndefined();   // Bereiche sind nie Kind
+    expect(toExportList(LISTE).parent).toBeUndefined();
+  });
+
   it("schreibt keine leeren Felder", () => {
     const fm = importedListFrontmatter({ name: "X", type: "project", color: null, archived: false }, "type");
     expect(fm.icon).toBeUndefined();

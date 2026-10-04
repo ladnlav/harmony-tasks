@@ -16,7 +16,7 @@ import { PageRef, pageInfo, samePage } from "./pageCtx";
 import { activePlanTabs, pageNoteFile, openDailyNote, forceListLeft, NOTE_ICON, DAILY_ICON } from "./planTabs";
 import { TaskModal } from "./taskModal";
 import { QuickAddModal } from "./quickAddModal";
-import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, projectSections, setProjectSections } from "./taskService";
+import { createTaskNote, transitionStamps, createProjectNote, setProjectType, setProjectArchived, setNavHidden, setProjectColor, setProjectDescription, renameProjectNote, deleteProjectNote, normalizeLabel, listManaged, listProjectsAndAreas, ensureCanonicalFm, isUnderFolder, INBOX_KEY, inboxNotePath, isInboxName, ProjItem, baseName, DuplicateOpts, ChildSource, projectSections, setProjectSections, allProjects, projectItem, setProjectParent } from "./taskService";
 import { splitContent, isDocumentBody, hasOwnContent, ensureNoteLinkLog, writeDescription, writeLog, parseDetailLog, nowLogTs, LOG_HEADING } from "./detailLog";
 import { titleKey, fmTitle, firstH1, findH1Line, findH1LineInBody, titleToStore, dropHeadingLine } from "./taskTitle";
 import { FieldId, fieldKey, initFieldNames, allFieldNames, isTypeRenameTarget, labelKey } from "./fieldNames";
@@ -1128,10 +1128,20 @@ export default class BeautyTasksPlugin extends Plugin {
   /** Neues Projekt (oder direkt Bereich) anlegen. Nav/Board lesen den metadataCache, der
    *  nach create erst kurz später aktualisiert wird -> einmaliger „changed"-Listener zeichnet
    *  dann neu, damit der neue Eintrag sofort in der Seitenleiste erscheint. */
-  async createProject(name: string, asArea = false, color: string | null = null, hidden = false, description = ""): Promise<void> {
-    await createProjectNote(this.app, this.settings, name, asArea, color, hidden, description);
+  async createProject(name: string, asArea = false, color: string | null = null, hidden = false, description = "", parentPath: string | null = null): Promise<void> {
+    // Unterprojekt: Der Elter muss oben stehen. Hängt er noch mit einem unwirksamen Verweis irgendwo,
+    // wird der zuerst entfernt (s. setProjectParent) – sonst griffe die neue Zuordnung nicht.
+    const parent = asArea ? null : projectItem(this.app, parentPath);
+    if (parent?.parentKey) await setProjectParent(this.app, parent.path, null);
+    await createProjectNote(this.app, this.settings, name, asArea, color, hidden, description, [], parent?.name ?? null);
     const ref = this.app.metadataCache.on("changed", () => { this.app.metadataCache.offref(ref); this.renderAll(); });
     this.registerEvent(ref);
+  }
+
+  /** Projekt unter ein anderes Projekt / einen Bereich hängen (null = nach oben holen). */
+  async setProjectParent(path: string, parentPath: string | null): Promise<void> {
+    this.refreshOnChange(path);
+    await setProjectParent(this.app, path, parentPath);
   }
 
   async setProjectArea(path: string, toArea: boolean): Promise<void> {
@@ -1194,6 +1204,13 @@ export default class BeautyTasksPlugin extends Plugin {
     return r;
   }
   async deleteProject(path: string): Promise<void> {
+    // Unterprojekte bleiben und rücken nach oben: Ihr Verweis zeigte sonst auf eine Notiz im
+    // Papierkorb – und hängte sie still an ein späteres, gleichnamiges Projekt.
+    const key = baseName(path).toLowerCase();
+    for (const kid of allProjects(this.app).filter((p) => p.parentKey === key && p.path !== path)) {
+      const f = this.app.vault.getAbstractFileByPath(kid.path);
+      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => { delete fm.parent; });
+    }
     await deleteProjectNote(this.app, path);
     // Datei ist nach trashFile sofort weg -> Cache aktuell. War es das offene Projekt/Bereich,
     // zur Startansicht wechseln (sonst bliebe ein leeres Board des gelöschten Eintrags stehen).
@@ -1232,7 +1249,11 @@ export default class BeautyTasksPlugin extends Plugin {
     // sie landet im Obsidian-Papierkorb, ist also wiederherstellbar, aber unerwähnt bleiben soll es
     // nicht. Der Body wird nur gelesen, nie angefasst.
     const own = this.noteHasOwnBody(path);
-    const body = [count > 0 ? t("confirm_delete_project_body") : "", own ? t("confirm_delete_note_body") : ""]
+    // Unterprojekte gehen NICHT mit – sie rücken nach oben. Das gehört in die Abfrage, sonst rechnet
+    // man mit dem Schlimmsten (oder mit dem Falschen).
+    const kids = allProjects(this.app).filter((p) => p.parent === path).length;
+    const body = [count > 0 ? t("confirm_delete_project_body") : "", own ? t("confirm_delete_note_body") : "",
+      kids ? t("subp_delete_note", kids) : ""]
       .filter(Boolean).join(" ");
     new ConfirmModal(this.app, {
       title: t("confirm_delete_title", name),
@@ -1381,8 +1402,16 @@ export default class BeautyTasksPlugin extends Plugin {
     }
     this.renderAll();
   }
-  /** Projekt/Bereich umbenannt: Aufgaben-`project` (Wikilink) UND Filter-`projects` (Klartext) nachziehen. */
+  /** Projekt/Bereich umbenannt: Aufgaben-`project` (Wikilink), Filter-`projects` (Klartext) und den
+   *  `parent`-Verweis seiner Unterprojekte nachziehen. */
   private async remapListRefs(oldBase: string, newBase: string): Promise<void> {
+    const oldKey = oldBase.toLowerCase();
+    for (const kid of allProjects(this.app).filter((p) => p.parentKey === oldKey)) {
+      const f = this.app.vault.getAbstractFileByPath(kid.path);
+      if (f instanceof TFile) await this.app.fileManager.processFrontMatter(f, (fm: Record<string, unknown>) => {
+        if (this.wikiBase(fm.parent)?.toLowerCase() === oldKey) fm.parent = "[[" + newBase + "]]";
+      });
+    }
     for (const task of this.index.all()) {
       if (this.wikiBase(task.project) !== oldBase) continue;
       const f = this.app.vault.getAbstractFileByPath(task.path);
@@ -1579,9 +1608,28 @@ export default class BeautyTasksPlugin extends Plugin {
     for (const k of visibleKeys) if (!full.includes(k)) merged.push(k);   // Sicherheitsnetz: neue Schlüssel
     await this.setNavOrder(sec, merged);
   }
+  /** Geschwister eines Projekts/Bereichs in Seitenleisten-Ordnung: dieselbe Ebene unter demselben
+   *  Elter (oben: derselbe Typ). Ohne das tauschte ↑/↓ ein oberstes Projekt mit dem Unterprojekt eines
+   *  anderen – in der flachen Liste Nachbarn, in der Seitenleiste nicht. */
+  private projSiblings(sec: NavSection, key: string, visibleOnly: boolean): string[] | null {
+    if (sec !== "projects" && sec !== "areas") return null;
+    const all = listManaged(this.app).active;
+    const me = all.find((p) => p.path === key);
+    if (!me) return null;
+    const sibs = all.filter((p) => p.parent === me.parent && (me.parent !== null || p.type === me.type) && (!visibleOnly || !p.hidden));
+    return this.sortProjItems(sec, sibs).map((p) => p.path);
+  }
   /** ↑/↓ im ÜBERSICHTS-Kontext: verschiebt in der VOLLEN Reihenfolge (inkl. Ausgeblendeter). */
   async moveNavItem(sec: NavSection, key: string, dir: -1 | 1): Promise<void> {
     await this.ensureManualSort(sec);   // ↑/↓ wirken nur im Manuell-Modus
+    const sibs = this.projSiblings(sec, key, false);
+    if (sibs) {
+      const i = sibs.indexOf(key), j = i + dir;
+      if (i < 0 || j < 0 || j >= sibs.length) return;
+      [sibs[i], sibs[j]] = [sibs[j], sibs[i]];
+      await this.reorderVisible(sec, sibs);   // setzt NUR diese Schlüssel neu, die übrigen bleiben stehen
+      return;
+    }
     const keys = this.currentNavKeys(sec);
     const i = keys.indexOf(key), j = i + dir;
     if (i < 0 || j < 0 || j >= keys.length) return;
@@ -1592,7 +1640,7 @@ export default class BeautyTasksPlugin extends Plugin {
    *  (überspringt Ausgeblendete) – so bewegt sich in der Seitenleiste immer sichtbar etwas. */
   async moveNavItemVisible(sec: NavSection, key: string, dir: -1 | 1): Promise<void> {
     await this.ensureManualSort(sec);
-    const vis = this.visibleNavKeys(sec);
+    const vis = this.projSiblings(sec, key, true) ?? this.visibleNavKeys(sec);
     const i = vis.indexOf(key), j = i + dir;
     if (i < 0 || j < 0 || j >= vis.length) return;
     [vis[i], vis[j]] = [vis[j], vis[i]];

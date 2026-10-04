@@ -13,7 +13,7 @@ import { readSections, writeSections, StoredSection } from "./sections";
 import { t } from "./i18n";
 
 const EXPORT_FORMAT = "beautytasks";
-const EXPORT_VERSION = 4;
+const EXPORT_VERSION = 5;
 // v1 = nur Aufgaben · v2 = eigener `lists`-Abschnitt (Projekt/Bereich mit Typ)
 // v3 = `sortOrder` und `body` an der Aufgabe, `icon`/`description`/`hidden` an der Liste,
 //      dazu `filters` und die Label-Farben/-Sichtbarkeit.
@@ -74,6 +74,8 @@ export interface ExportList {
   hidden?: boolean;
   /** Abschnitte des Projekts/Bereichs (v4) – die Aufgaben verweisen mit `section` darauf. */
   sections?: StoredSection[];
+  /** Name des Elters, wenn die Liste ein Unterprojekt ist (v5, s. projectTree.ts). */
+  parent?: string;
 }
 
 /** Ein gespeicherter Filter. Kriterien und Anzeige-Optionen wandern als Ganzes mit – sie
@@ -217,6 +219,8 @@ export function toExportList(p: ProjItem): ExportList {
     name: p.name, type: p.type, color: p.color, archived: p.archived,
     icon, description: p.description || "", hidden: p.hidden,
     sections: p.sections?.length ? writeSections(p.sections) : undefined,
+    // Nur der WIRKSAME Elter – ein Verweis, der ohnehin nicht greift, soll nicht mitwandern.
+    parent: p.parent ? baseName(p.parent) : undefined,
   };
 }
 
@@ -272,6 +276,8 @@ export function importedListFrontmatter(list: ExportList, typeName: string): Rec
     created: todayIso(),
     // Über read/write statt wörtlich: ein von Hand bearbeiteter Export kommt bereinigt an.
     sections: list.sections?.length ? writeSections(readSections(list.sections)) : undefined,
+    // Über den Dateinamen, unter dem der Elter angelegt wird (slugify) – sonst löste der Link nicht auf.
+    parent: list.parent && list.type !== "area" ? "[[" + slugify(list.parent) + "]]" : undefined,
   };
 }
 

@@ -2,7 +2,7 @@
 
 A task & project manager that lives **inside** Obsidian — in the spirit of Singularity and Todoist, with a fast, native UI on top of plain Markdown. Every task is a single Markdown note, so your data stays open, portable and future-proof, and there are **no plugin dependencies** and no account required.
 
-Harmony Tasks is a fork of [BeautyTasks](https://github.com/avnibilgin/BeautyTasks) by Avni Bilgin. It adds **checklists**, **project sections**, a **project overview** and **flexible recurrence** (“every Tuesday and Thursday”), and recurring tasks take their checklist and subtasks along. Moving over from BeautyTasks? See [below](#moving-over-from-beautytasks).
+Harmony Tasks is a fork of [BeautyTasks](https://github.com/avnibilgin/BeautyTasks) by Avni Bilgin. It adds **subprojects**, **checklists**, **project sections**, a **project overview** and **flexible recurrence** (“every Tuesday and Thursday”), and recurring tasks take their checklist and subtasks along. Moving over from BeautyTasks? See [below](#moving-over-from-beautytasks).
 
 ![Release](https://img.shields.io/github/v/release/ladnlav/harmony-tasks?sort=semver)
 ![License](https://img.shields.io/github/license/ladnlav/harmony-tasks)
@@ -62,6 +62,8 @@ A single dashboard with a left sidebar:
 Every sidebar entry has a **right-click menu** (go to its note, edit, recolor, convert, hide, reorder, archive, delete), and you can **reorder** sections by drag or sort them **manually, by name or by task count**.
 
 **Projects vs. Areas.** Organize tasks into **projects** or **areas** — two independent kinds, each with its own tab in the ListManager and its own `+` in the sidebar, so you can **create, archive and delete either one directly**. An **Area** is a fixed section that keeps its own place in the sidebar — ideal for long-running responsibilities that should never be “finished” — while a **project** is for work that eventually wraps up. You can convert one into the other at any time.
+
+**Subprojects.** Projects and areas can hold **projects of their own** — one level deep, so a structure stays readable: *Area → Project*, or *Project → Subproject*. In the sidebar they sit indented under their parent, which gets a small arrow to fold them away (folded, its count includes theirs). The parent's page shows a **Subprojects** block with progress and what is overdue or due today for each one — click to open, drag a task onto one to move it there — and below it the parent's own tasks; the **overview** counts the whole branch. Create one with **Add subproject** in the parent's menu (or the *Belongs to* field when creating a project), move it with **Move to ▸** in its menu. Archiving a parent rests its subprojects with it; deleting a parent keeps them and moves them up to the top level.
 
 **Sections & subsections.** Split a project or area into **sections** (and one level of **subsections**) — parts of the project, not tasks. Each section has a name, an optional **Markdown description** shown under its heading, its own tasks and its own **+ Add task**. Collapse a section, reorder or rename it from its **⋯ menu**, drag a task onto a section heading to move it there, or use **Move to section** in the task's context menu. The first section is created from the project's menu (or **+ Add section** at the end of the list). On the board, sections can be the columns (*Display → Group → Section*). Deleting a section moves its tasks up one level — or, if you tick the box, to the trash.
 
@@ -325,6 +327,8 @@ sections:
 Your own notes start right here.
 ```
 
+A **subproject** names its parent with `parent: "[[Name]]"` — the same form subtasks use, so it is a real link (backlinks, graph) and follows renames. Only projects can be subprojects, and only one level deep; a link that would nest deeper is ignored and the project stays at the top.
+
 The name always comes from the **file name**, never from the body or a `title:` field. That keeps one name for one thing: renaming the project renames the file, and Obsidian plus Harmony Tasks update every `[[link]]` pointing at it.
 
 By default, notes live under these folders (all configurable in settings):
@@ -496,11 +500,9 @@ Individual projects, areas, labels and filters can have their own color. Pick on
 
 ## Roadmap
 
-Harmony Tasks is under active development, moving closer to Singularity. Next up:
+Harmony Tasks is under active development, moving closer to Singularity.
 
-- **Subprojects** — projects and areas hold projects of their own, two levels deep. A project page shows its subprojects with their progress above its own tasks, and the overview counts the whole branch.
-
-Recently shipped: **checklists**, **project sections**, the **project overview**, **flexible recurrence**, and recurring tasks that **carry their checklist and subtasks** into the next round.
+Recently shipped: **subprojects**, **checklists**, **project sections**, the **project overview**, **flexible recurrence**, and recurring tasks that **carry their checklist and subtasks** into the next round.
 
 Have an idea or a request? Open an issue — feedback shapes the priorities.
 

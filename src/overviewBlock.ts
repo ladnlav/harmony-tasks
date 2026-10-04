@@ -24,7 +24,10 @@ const COUNTERS: { kind: Counter; icon: string; key: string }[] = [
   { kind: "noDate", icon: "calendar-off", key: "ov_nodate" },
 ];
 
-export function renderOverview(root: HTMLElement, ctx: PageCtx, projectPath: string, name: string): OverviewMount {
+/** @param branch  Pfade, über die gezählt wird – das Projekt und seine Unterprojekte (s. projectBranch).
+ *                 Frisch je paint(), weil ein Unterprojekt dazukommen oder gehen kann. */
+export function renderOverview(root: HTMLElement, ctx: PageCtx, projectPath: string, name: string,
+  branch: () => string[] = () => [projectPath]): OverviewMount {
   const plugin = ctx.plugin;
   const collapseKey = "ov:" + projectPath;   // geräte-lokal, wie die Seitenleisten-Abschnitte
   const box = root.createDiv({ cls: "bt-ov" });
@@ -201,7 +204,7 @@ export function renderOverview(root: HTMLElement, ctx: PageCtx, projectPath: str
   const paint = (): void => {
     if (!box.isConnected) return;
     const today = todayStr();
-    const tasks = plugin.index.allInProject(projectPath);
+    const tasks = branch().flatMap((p) => plugin.index.allInProject(p));
     const st = projectStats(tasks, today);
     const nx = nextTasks(tasks, today, 5);
     const sig = [JSON.stringify(st), ctx.crit.range, today,

@@ -8,7 +8,7 @@ import { takeFromBudget, repaintCount, rowsForScroll, columnFirstPaint, placehol
 import { Task, NavSection, Priority } from "./types";
 import { todayStr, combineDT, dateOf, groupLabel } from "./format";
 import { openDatePicker } from "./datePicker";
-import { listProjectsAndAreas, listManaged, isAreaPath, isInboxLink, baseName, openTaskNote, INBOX_KEY, ProjLists } from "./taskService";
+import { listProjectsAndAreas, listManaged, isAreaPath, isInboxLink, baseName, openTaskNote, INBOX_KEY, ProjLists, ProjItem, projectChildren, projectBranch, projectItem } from "./taskService";
 import { listFilters, readFilter, FilterItem } from "./filterService";
 import { applyFilter, countFilter, filterTasks, hasCriteria, sortTasks, groupTasks, dateColumnKeys, visibleRows, planDiff, agendaOwnRow, effectiveSubtasks, sortSubtasks, DEFAULT_CRITERIA, FilterGroup, FilterSort, PageLayout, LAYOUTS, SortDir, SubtaskDisplay, ViewOptions } from "./filterEngine";
 import { FilterModal } from "./filterModal";
@@ -27,6 +27,7 @@ import { renderCheck, installCheckDelegation } from "./taskCheck";
 import { installTaskMenuDelegation, menuHoldPath } from "./taskMenu";
 import { openChecklistPopover } from "./checklistView";
 import { renderOverview } from "./overviewBlock";
+import { renderSubprojects } from "./subprojectBlock";
 import { SectionPage, effectiveSection, sectionMenu, createSection, editSection } from "./sectionView";
 import { SectionGroup, groupBySection, orderedSections, sectionLabel } from "./sections";
 import { wireLinkClicks } from "./mdLinks";
@@ -470,6 +471,18 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   const meta = isInbox ? null
     : (() => { const { active, archived } = listManaged(plugin.app); return [...active, ...archived].find((p) => p.path === projectPath) ?? null; })();
   const top = pageTop(c, ctx.opts.layout);
+  // Unterprojekt: der Elter als Brotkrume über dem Titel – der Weg zurück, wie „Zur Hauptaufgabe".
+  const elter = meta?.parent ? projectItem(plugin.app, meta.parent) : null;
+  if (elter) {
+    const crumb = top.createDiv({ cls: "bt-proj-crumb", attr: { role: "button", tabindex: "0" } });
+    const cic = crumb.createSpan({ cls: "bt-proj-crumb-ic" });
+    setIcon(cic, elter.icon);
+    if (elter.color) cic.setCssStyles({ color: elter.color });
+    crumb.createSpan({ text: elter.name });
+    const hoch = (): void => ctx.open({ kind: "project", key: elter.path });
+    crumb.onclick = hoch;
+    crumb.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); hoch(); } };
+  }
   const projItem: NavMenuItem | null = meta
     ? { sec: meta.type === "area" ? "areas" : "projects", key: meta.path, name: meta.name, hidden: meta.hidden, color: meta.color, type: meta.type, archived: meta.archived }
     : null;
@@ -482,8 +495,17 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   // Überblick (Fortschritt, nächste Termine, Infos aus der Projektnotiz) über den Aufgaben. Nicht im
   // Eingang (er ist keine Liste mit Notiz) und nicht im Kalender: Dessen Abgleich (tryPatchCalendar)
   // kennt den Block nicht – er bliebe dort nach dem Abhaken auf dem alten Stand stehen.
+  // Der Überblick zählt den ganzen Zweig (Projekt + Unterprojekte), die Liste darunter zeigt nur
+  // die eigenen Aufgaben – die der Unterprojekte stehen auf deren Seiten (s. subprojectBlock.ts).
   const overview = !isInbox && meta && plugin.settings.showProjectOverview && ctx.opts.layout !== "calendar"
-    ? renderOverview(root, ctx, projectPath, meta.name) : null;
+    ? renderOverview(root, ctx, projectPath, meta.name, () => projectBranch(plugin.app, projectPath)) : null;
+  const kinder = !isInbox && meta && !meta.parent && ctx.opts.layout !== "calendar" ? projectChildren(plugin.app, projectPath) : [];
+  const subs = meta && kinder.length
+    ? renderSubprojects(root, ctx, meta, kinder, (el, kid) => attachTaskDrop(el, plugin, (task) => {
+      if (task.project !== kid.path) void plugin.setTaskProject(task, kid.name);
+    }))
+    : null;
+  const repaintBlocks = overview || subs ? (): void => { overview?.paint(); subs?.paint(); } : undefined;
 
   // Abschnitte (s. sections.ts). In der LISTE ist „keine Gruppierung" bei einem Projekt mit
   // Abschnitten die Gliederung nach Abschnitten – wie „Heute" ohne Wahl nach Datum gliedert. Sonst
@@ -503,13 +525,14 @@ export function renderProjectBoardInto(c: HTMLElement, ctx: PageCtx, projectPath
   // Ein Projekt, das nur Abschnitte hat, zeigt sie – leer, aber mit „+ Aufgabe" je Abschnitt.
   if (!tasks.length && !zeigtAbschnitte) {
     if (hasCriteria(ctx.crit)) filterEmptyState(root, ctx);
+    else if (subs) { /* Die Unterprojekte darüber SIND der Inhalt – kein „Keine Aufgaben" darunter. */ }
     else if (isInbox) emptyState(root, "inbox", "empty_no_inbox_tasks");
     else if (isArea) emptyState(root, "circle-small", "empty_no_area_tasks");
     else emptyState(root, "folder", "empty_no_project_tasks");
     return;
   }
   renderPageBody(root, ctx, source, opts, today, isInbox ? { project: null } : { project: name, sectionPage },
-    () => noteHeadSig(plugin, isInbox ? null : projectPath), overview ? () => overview.paint() : undefined, sectionPage);
+    () => noteHeadSig(plugin, isInbox ? null : projectPath), repaintBlocks, sectionPage);
 }
 
 /** Label-Board: alle Aufgaben mit einem Label, nach Status/Datum gruppiert (wie Projekt-Board). */
@@ -1825,7 +1848,13 @@ function noteHeadSig(plugin: BeautyTasksPlugin, path: string | null): string {
   const fm = f instanceof TFile ? plugin.app.metadataCache.getFileCache(f)?.frontmatter : null;
   // Die Abschnitte gehören dazu: Jede Änderung an der Gliederung (neu, umbenannt, verschoben,
   // Beschreibung) baut die Seite neu – der Abgleich zeichnet nur Zeilen, keine Abschnittsköpfe.
-  return [path, fm?.description ?? "", fm?.color ?? "", fm?.status ?? "", fm?.nav_hidden ?? "", JSON.stringify(fm?.sections ?? null)].join("~");
+  // Ebenso Elter (Brotkrume) und die Unterprojekte: Kommt eines dazu, geht eines oder heißt es anders,
+  // stimmt der Block über der Liste nicht mehr – und den zeichnet der Abgleich nicht neu.
+  const kids = projectChildren(plugin.app, path).map((k) => [k.path, k.icon, k.color ?? "", k.hidden].join(":")).join(",");
+  const self = projectItem(plugin.app, path);
+  const up = self?.parent ? projectItem(plugin.app, self.parent) : null;
+  const elter = up ? [up.path, up.icon, up.color ?? ""].join(":") : "";
+  return [path, fm?.description ?? "", fm?.color ?? "", fm?.status ?? "", fm?.nav_hidden ?? "", JSON.stringify(fm?.sections ?? null), elter, kids].join("~");
 }
 
 /** Einstellungen, die in JEDER Zeile stecken (und beim Patchen nicht neu gelesen würden). */
@@ -2173,6 +2202,8 @@ interface NavItemOpts {
   /** Wohin der Eintrag führt. Nur dafür da, Strg-/Mittelklick zu bedienen – der normale Klick
    *  läuft weiter über onClick (Einträge wie „Suchen" haben gar keine Seite und lassen es weg). */
   page?: PageRef;
+  /** Klapp-Pfeil für einen Eintrag mit Unterprojekten (s. projectTree.ts). */
+  twisty?: { collapsed: boolean; onToggle: () => void };
 }
 
 /** Div klick- UND tastaturbedienbar machen (role=button/tabindex kommen vom Aufrufer):
@@ -2192,6 +2223,17 @@ function navItem(c: HTMLElement, plugin: BeautyTasksPlugin, o: NavItemOpts): voi
   // abgeschnitten wird, es füllt per flex:1 ohnehin die freie Breite, und ein aria-label an
   // der Zeile würde für Screenreader den Zähler daneben verschlucken („Reisen" statt „Reisen 22").
   tipWhenClipped(lbl, lbl, o.label);
+  // Klapp-Pfeil RECHTS vom Namen: Links stünde er vor dem Symbol und schöbe es aus der Flucht der
+  // Geschwister ohne Kinder. Eigener Klick – der Eintrag selbst öffnet weiter seine Seite.
+  if (o.twisty) {
+    const tw = o.twisty;
+    const el = item.createSpan({ cls: "bt-nav-twisty", attr: { role: "button", tabindex: "0", "aria-expanded": String(!tw.collapsed) } });
+    setIcon(el, tw.collapsed ? "chevron-right" : "chevron-down");
+    tip(el, t(tw.collapsed ? "subp_expand" : "subp_collapse"));
+    el.onclick = (e) => { e.stopPropagation(); tw.onToggle(); };
+    el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); tw.onToggle(); } };
+    el.addEventListener("auxclick", (e) => e.stopPropagation());
+  }
   // Zähler-Span IMMER anlegen (auch bei 0 – dann leer): nur so kann ihn der Badge-Füller später
   // beschreiben, ohne die Seitenleiste neu zu bauen. o.countKey registriert ihn dafür.
   if (o.countKey || o.count) {
@@ -2362,6 +2404,63 @@ function renderReorderList(c: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSe
  *  • Die STRUKTUR (welche Einträge, Namen, Farben, aktiver Eintrag, eingeklappte Abschnitte) wird
  *    per Signatur geprüft. Ändert sie sich, läuft der vollständige Neuaufbau wie bisher.
  */
+/** Sortiermodus für Projekte/Bereiche MIT Unterprojekten: Jeder oberste Eintrag ist eine Gruppe, die
+ *  seine Unterprojekte mitnimmt; die Unterprojekte sortieren sich nur untereinander (eigene Liste).
+ *  Ein Unterprojekt in eine andere Gruppe zu ziehen hieße umhängen – das läuft über „Verschieben
+ *  nach ▸", nicht über einen Zug, der auch ein Versehen sein kann. */
+function renderReorderTree(c: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSection, tops: ProjItem[], kidsOf: (p: ProjItem) => ProjItem[]): void {
+  const bar = c.createDiv({ cls: "bt-reorder-bar" });
+  bar.createSpan({ cls: "bt-reorder-lbl", text: t("reorder_active") });
+  const done = bar.createEl("button", { cls: "bt-reorder-done mod-cta", text: t("reorder_done") });
+  done.onclick = () => plugin.endReorder();
+
+  const row = (host: HTMLElement, p: ProjItem, moveSec: NavSection): { el: HTMLElement; grip: HTMLElement } => {
+    const el = host.createDiv({ cls: "bt-reorder-row" });
+    const grip = el.createSpan({ cls: "bt-nav-grip", attr: { role: "button", tabindex: "0" } });
+    tip(grip, t("menu_reorder"));
+    setIcon(grip, "grip-vertical");
+    const ic = el.createSpan({ cls: "bt-nav-ic" }); setIcon(ic, p.icon);
+    if (p.color) ic.setCssStyles({ color: p.color });
+    const lbl = el.createSpan({ cls: "bt-nav-lbl", text: p.name });
+    tipWhenClipped(lbl, lbl, p.name);
+    grip.onkeydown = (ev) => {
+      if (ev.key === "ArrowUp") { ev.preventDefault(); void plugin.moveNavItemVisible(moveSec, p.path, -1); }
+      else if (ev.key === "ArrowDown") { ev.preventDefault(); void plugin.moveNavItemVisible(moveSec, p.path, 1); }
+    };
+    return { el, grip };
+  };
+
+  const list = c.createDiv({ cls: "bt-reorder-list" });
+  for (const p of tops) {
+    const group = list.createDiv({ cls: "bt-reorder-group", attr: { "data-key": p.path } });
+    const top = row(group, p, sec);
+    attachRowDrag(group, top.grip, list, (keys) => void plugin.reorderVisible(sec, keys));
+    const kids = kidsOf(p);
+    if (!kids.length) continue;
+    const sub = group.createDiv({ cls: "bt-reorder-sub" });
+    for (const k of kids) {
+      const r = row(sub, k, "projects");
+      r.el.setAttr("data-key", k.path);
+      // Unterprojekte sind Projekte: Ihre Reihenfolge steht in navOrder.projects – auch unter einem Bereich.
+      attachRowDrag(r.el, r.grip, sub, (keys) => void plugin.ensureManualSort("projects").then(() => plugin.reorderVisible("projects", keys)));
+    }
+  }
+}
+
+/** Zähler eines Projekts/Bereichs in der Seitenleiste: eingeklappt mit seinen (sichtbaren)
+ *  Unterprojekten – was man nicht sieht, steckt in der Zahl des Elters –, aufgeklappt nur die eigenen. */
+function navProjCount(plugin: BeautyTasksPlugin, p: ProjItem, kids: readonly ProjItem[], collapsed: boolean): number {
+  const own = plugin.index.byProject(p.path).length;
+  return collapsed ? kids.reduce((n, k) => n + plugin.index.byProject(k.path).length, own) : own;
+}
+/** Device-Schlüssel für „Unterprojekte eingeklappt" (s. isNavCollapsed). */
+const TREE_KEY = "tree:";
+/** Sichtbare Unterprojekte eines obersten Eintrags, in der Ordnung der Projekte-Sektion. */
+function navKids(plugin: BeautyTasksPlugin, pa: ProjLists, p: ProjItem): ProjItem[] {
+  if (p.parent !== null) return [];
+  return plugin.sortProjItems("projects", pa.projekte.filter((x) => x.parent === p.path && !x.hidden));
+}
+
 interface NavMount { sig: string; badges: Map<string, HTMLElement> }
 const navMounts = new WeakMap<HTMLElement, NavMount>();
 let navBadges: Map<string, HTMLElement> | null = null;   // aktive Sammlung während renderNavInto
@@ -2381,7 +2480,10 @@ function navCounts(plugin: BeautyTasksPlugin, tpls: TemplateInfo[], pa: ProjList
   const { bereiche, projekte } = pa;
   m.set("p:" + INBOX_KEY, plugin.index.inboxOpen().length);   // eingebauter Eingang
   for (const id of VIEW_IDS) m.set("v:" + id, navCount(plugin, id));
-  for (const p of [...bereiche, ...projekte]) m.set("p:" + p.path, plugin.index.byProject(p.path).length);
+  for (const p of [...bereiche, ...projekte]) {
+    const kids = navKids(plugin, pa, p);
+    m.set("p:" + p.path, navProjCount(plugin, p, kids, kids.length > 0 && plugin.isNavCollapsed(TREE_KEY + p.path)));
+  }
   const today = todayStr();
   for (const fl of flts) m.set("f:" + fl.path, filterBadgeCount(plugin, fl, today));
   for (const name of plugin.getVisibleLabels()) m.set("l:" + name, plugin.index.byLabel(name).length);
@@ -2394,8 +2496,8 @@ function navCounts(plugin: BeautyTasksPlugin, tpls: TemplateInfo[], pa: ProjList
 /** Struktur-Signatur OHNE Zahlen: gleich = dieselben Einträge in derselben Form. */
 function navSignature(plugin: BeautyTasksPlugin, tpls: TemplateInfo[], pa: ProjLists, flts: FilterItem[]): string {
   const { bereiche, projekte } = pa;
-  const proj = (p: { path: string; name: string; icon: string; color: string | null; hidden: boolean }): string =>
-    [p.path, p.name, p.icon, p.color, p.hidden].join("~");
+  const proj = (p: ProjItem): string =>
+    [p.path, p.name, p.icon, p.color, p.hidden, p.parent ?? ""].join("~");
   return JSON.stringify({
     areas: plugin.sortProjItems("areas", bereiche).map(proj),
     projects: plugin.sortProjItems("projects", projekte).map(proj),
@@ -2429,6 +2531,9 @@ function navSignature(plugin: BeautyTasksPlugin, tpls: TemplateInfo[], pa: ProjL
     tplReady: plugin.templates.ready,
     active: JSON.stringify(plugin.activePage()),   // markiert wird die Seite des AKTIVEN Tabs
     collapsed: ["filters", "labels", "areas", "projects", "templates"].map((id) => plugin.isNavCollapsed(id)),
+    // Eingeklappte Unterprojekt-Zweige: ändern, welche Zeilen stehen (und was der Elter zählt).
+    tree: [...bereiche, ...projekte].filter((p) => projekte.some((x) => x.parent === p.path))
+      .map((p) => p.path + ":" + plugin.isNavCollapsed(TREE_KEY + p.path)),
     reorder: plugin.reorderSec,
     preview: plugin.colorPreview,
     locale: getLocale(),
@@ -2530,24 +2635,34 @@ export function renderNavInto(c: HTMLElement, plugin: BeautyTasksPlugin): void {
 
   // cls = Kategorie-Klasse (bt-nav-area / bt-nav-project) für eine gemeinsame Icon-Farbe je Gruppe.
   // Rechtsklick auf einen Eintrag öffnet das Kontextmenü (Bearbeiten, Ausblenden, Sortieren, …).
-  const projItems = (items: { name: string; path: string; icon: string; color: string | null; hidden: boolean }[], cls: string, kind: "project" | "area") => {
+  // Unterprojekte (s. projectTree.ts) stehen eingerückt unter ihrem Elter – auch unter einem
+  // Bereich, also NICHT zusätzlich in der Projekte-Sektion. Sortiert werden sie wie Projekte.
+  const projItems = (items: ProjItem[], kind: "project" | "area") => {
     const sec: NavSection = kind === "area" ? "areas" : "projects";
-    const visible = items.filter((x) => !x.hidden);   // in der Verwaltung ausgeblendete weglassen
+    // In der Verwaltung ausgeblendete weglassen; Unterprojekte kommen über ihren Elter.
+    const visible = items.filter((x) => !x.hidden && x.parent === null);
     if (plugin.reorderSec === sec) {
-      renderReorderList(c, plugin, sec, visible.map((p) => ({ key: p.path, name: p.name, icon: p.icon, color: p.color })));
+      renderReorderTree(c, plugin, sec, visible, (p) => navKids(plugin, pa, p));
       return;
     }
-    for (const p of visible) {
+    const row = (p: ProjItem, sub: boolean): void => {
+      const kids = sub ? [] : navKids(plugin, pa, p);
+      const zu = kids.length > 0 && plugin.isNavCollapsed(TREE_KEY + p.path);
+      const itemSec: NavSection = p.type === "area" ? "areas" : "projects";
       navItem(c, plugin, {
-        cls, icon: p.icon, iconColor: navColor(p.path, p.color), label: p.name,
-        count: plugin.index.byProject(p.path).length, countKey: "p:" + p.path,
+        cls: (p.type === "area" ? "bt-nav-area" : "bt-nav-project") + (sub ? " bt-nav-sub" : ""),
+        icon: p.icon, iconColor: navColor(p.path, p.color), label: p.name,
+        count: navProjCount(plugin, p, kids, zu), countKey: "p:" + p.path,
+        twisty: kids.length ? { collapsed: zu, onToggle: () => void plugin.setNavCollapsed(TREE_KEY + p.path, !zu) } : undefined,
         active: isActive("project", p.path), page: { kind: "project", key: p.path }, onClick: () => void plugin.activateProject(p.path),
-        onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec, key: p.path, name: p.name, hidden: p.hidden, color: p.color, type: kind }); m.showAtMouseEvent(e); },
+        onContext: (e) => { const m = new Menu(); buildItemMenu(m, plugin, { sec: itemSec, key: p.path, name: p.name, hidden: p.hidden, color: p.color, type: p.type }); m.showAtMouseEvent(e); },
         // Verweise laufen über den Basename (s. setTaskProject); liegt die Aufgabe schon hier,
         // bleibt der Zug folgenlos statt die Notiz unnötig neu zu schreiben.
         onDropTask: (task) => { if (task.project !== p.path) void plugin.setTaskProject(task, p.name); },
       });
-    }
+      if (!zu) for (const k of kids) row(k, true);
+    };
+    for (const p of visible) row(p, false);
   };
 
   // ── Ab hier: Abschnitte, die es nur gibt, wenn es ihre Einträge gibt ──────────────────────
@@ -2615,14 +2730,15 @@ export function renderNavInto(c: HTMLElement, plugin: BeautyTasksPlugin): void {
   if (bereiche.length) {
     const areasCollapsed = navHead(c, plugin, "areas", t("group_area"), t("pick_new_area"), "", redraw,
       async () => undefined, () => new NewItemModal(plugin, "area").open());
-    if (!areasCollapsed || plugin.reorderSec === "areas") projItems(plugin.sortProjItems("areas", bereiche), "bt-nav-area", "area");
+    if (!areasCollapsed || plugin.reorderSec === "areas") projItems(plugin.sortProjItems("areas", bereiche), "area");
   }
 
-  // Projekte: „+" öffnet das Neu-Modal (Name + Farbe).
-  if (projekte.length) {
+  // Projekte: „+" öffnet das Neu-Modal (Name + Farbe). Nur wenn es OBERSTE gibt – Unterprojekte eines
+  // Bereichs stehen dort, nicht hier.
+  if (projekte.some((p) => p.parent === null)) {
     const projCollapsed = navHead(c, plugin, "projects", t("group_project"), t("pick_new_project"), "", redraw,
       async () => undefined, () => new NewItemModal(plugin, "project").open());
-    if (!projCollapsed || plugin.reorderSec === "projects") projItems(plugin.sortProjItems("projects", projekte), "bt-nav-project", "project");
+    if (!projCollapsed || plugin.reorderSec === "projects") projItems(plugin.sortProjItems("projects", projekte), "project");
   }
 
   // Vorlagen ganz unten: „+" legt eine leere an. Ein KLICK wendet an – nicht „öffnet", wie bei den

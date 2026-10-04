@@ -1,7 +1,8 @@
 import { Modal, TFile, Notice, setIcon, Platform, HoverPopover } from "obsidian";
 import type BeautyTasksPlugin from "./main";
 import { Task, TaskStatus } from "./types";
-import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, setTaskTitle, TaskFields, baseName, EditScope, ProjItem, projectSectionsByName } from "./taskService";
+import { createTaskNote, listProjectsAndAreas, knownProjectNames, createProjectNote, todayIso, ensureCanonicalFm, isInboxLink, copyTaskLink, setTaskTitle, TaskFields, baseName, EditScope, projectSectionsByName } from "./taskService";
+import { projectPickerGroups } from "./projectPicker";
 import { findSection, orderedSections, sectionLabel } from "./sections";
 import { formatDateTime, combineDT } from "./format";
 import { openPopover, popRow } from "./popover";
@@ -620,25 +621,20 @@ export class TaskModal extends Modal {
       popRow(pop, "plus", t("pick_new_project"), () => this.startNewProject(pop, close, false)).addClass("bt-row-action");
       popRow(pop, "plus", t("pick_new_area"), () => this.startNewProject(pop, close, true)).addClass("bt-row-action");
 
-      const { bereiche, projekte } = listProjectsAndAreas(this.app);
       const pick = (name: string | null, section: string | null = null) => { this.f.project = name; this.f.section = section; this.renderProjekt(); close(); };
       // Eingang = kein Projekt (Auswahl leert das Projekt-Feld).
       popRow(pop, "inbox", t("nav_inbox"), () => pick(null), isInboxLink(this.f.project));
       const aktiv = this.validSection();
-      const group = (title: string, items: ProjItem[]) => {
-        if (!items.length) return;
-        pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) {
-          popRow(pop, it.icon, it.name, () => pick(it.name), this.f.project === it.name && !aktiv, it.color ?? undefined);
-          // Abschnitte eingerückt unter ihrem Projekt: Projekt UND Abschnitt in einem Klick.
-          for (const e of orderedSections(it.sections)) {
-            popRow(pop, "list", e.def.name, () => pick(it.name, e.def.id), this.f.project === it.name && aktiv === e.def.id)
-              .addClass(e.depth ? "bt-row-sec2" : "bt-row-sec");
-          }
+      projectPickerGroups(pop, this.app, (it, depth) => {
+        const r = popRow(pop, it.icon, it.name, () => pick(it.name), this.f.project === it.name && !aktiv, it.color ?? undefined);
+        // Abschnitte eingerückt unter ihrem Projekt: Projekt UND Abschnitt in einem Klick. Unter einem
+        // Unterprojekt eine Stufe tiefer.
+        for (const e of orderedSections(it.sections)) {
+          popRow(pop, "list", e.def.name, () => pick(it.name, e.def.id), this.f.project === it.name && aktiv === e.def.id)
+            .addClasses([e.depth ? "bt-row-sec2" : "bt-row-sec", ...(depth ? ["bt-row-in-sub"] : [])]);
         }
-      };
-      group(t("group_area"), bereiche);
-      group(t("group_project"), projekte);
+        return r;
+      });
     });
   }
 

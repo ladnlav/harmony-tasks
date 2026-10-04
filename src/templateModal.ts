@@ -2,6 +2,7 @@ import { Modal, Notice, setIcon } from "obsidian";
 import { PromptModal } from "./confirmModal";
 import type BeautyTasksPlugin from "./main";
 import { baseName, isInboxLink, listProjectsAndAreas } from "./taskService";
+import { projectPickerGroups } from "./projectPicker";
 import { openPopover, popRow } from "./popover";
 import { openDatePicker } from "./datePicker";
 import { dateOf, formatDate, todayStr } from "./format";
@@ -225,16 +226,9 @@ export class ApplyTemplateModal extends Modal {
   private openProject(anchor: HTMLElement): void {
     openPopover(anchor, (pop, close) => {
       pop.addClass("bt-picker");
-      const { bereiche, projekte } = listProjectsAndAreas(this.app);
       const pick = (name: string | null): void => { this.project = name; this.renderProjekt(); close(); };
       popRow(pop, "inbox", t("nav_inbox"), () => pick(null), isInboxLink(this.project));
-      const group = (title: string, items: { name: string; icon: string; color: string | null }[]): void => {
-        if (!items.length) return;
-        pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), this.project === it.name, it.color ?? undefined);
-      };
-      group(t("group_area"), bereiche);
-      group(t("group_project"), projekte);
+      projectPickerGroups(pop, this.app, (it) => popRow(pop, it.icon, it.name, () => pick(it.name), this.project === it.name, it.color ?? undefined));
     });
   }
 

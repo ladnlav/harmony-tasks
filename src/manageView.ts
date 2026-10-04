@@ -1,7 +1,7 @@
 import { setIcon, Notice, Menu } from "obsidian";
 import type BeautyTasksPlugin from "./main";
 import { PageCtx, manageTitleKey } from "./pageCtx";
-import { listManaged, ProjItem } from "./taskService";
+import { listManaged, allProjects, ProjItem } from "./taskService";
 import { listFilters, FilterItem } from "./filterService";
 import { countFilter } from "./filterEngine";
 import { FilterModal } from "./filterModal";
@@ -31,8 +31,13 @@ function sortControl(parent: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSec
 
 /** Zieh-Griff am Zeilenanfang (nur im Manuell-Modus). Ziehen ordnet die ganze Liste um –
  *  inkl. der in der Seitenleiste ausgeblendeten Einträge; ArrowUp/ArrowDown verschieben per Tastatur. */
-function reorderHandle(row: HTMLElement, list: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSection, key: string): void {
-  row.setAttr("data-key", key);
+/** @param unit     Was beim Ziehen wandert – sonst die Zeile selbst; bei einem Projekt mit
+ *                  Unterprojekten die Gruppe, die sie mitnimmt.
+ *  @param persist  Wie gespeichert wird – sonst die VOLLE Reihenfolge der Sektion. Im Baum nur die
+ *                  gezogenen Geschwister (reorderVisible), damit die übrigen ihren Platz behalten. */
+function reorderHandle(row: HTMLElement, list: HTMLElement, plugin: BeautyTasksPlugin, sec: NavSection, key: string,
+  unit: HTMLElement = row, persist: (keys: string[]) => void = (keys) => void plugin.setNavOrder(sec, keys)): void {
+  unit.setAttr("data-key", key);
   const grip = row.createSpan({ cls: "bt-nav-grip", attr: { role: "button", tabindex: "0" } });
   tip(grip, t("menu_reorder"));
   setIcon(grip, "grip-vertical");
@@ -41,7 +46,7 @@ function reorderHandle(row: HTMLElement, list: HTMLElement, plugin: BeautyTasksP
     else if (e.key === "ArrowDown") { e.preventDefault(); void plugin.moveNavItem(sec, key, 1); }
   };
   // Übersicht: Ziehen ordnet die VOLLE Reihenfolge (inkl. Ausgeblendeter) neu.
-  attachRowDrag(row, grip, list, (keys) => void plugin.setNavOrder(sec, keys));
+  attachRowDrag(unit, grip, list, persist);
   row.prepend(grip);   // vor Farbpunkt/Name/Aktionen an den Zeilenanfang
 }
 
@@ -170,18 +175,41 @@ export function renderManageInto(c: HTMLElement, ctx: PageCtx): void {
     const items = archived.filter((p) => p.type === wantType);
     if (!items.length) { root.createEl("p", { cls: "bt-empty", text: t("manage_empty_archive") }); return; }
     const list = root.createDiv({ cls: "bt-manage-list" });
-    for (const it of items) archiveRow(list, ctx, it, redraw);
+    const all = allProjects(plugin.app);
+    for (const it of items) {
+      archiveRow(list, ctx, it, redraw);
+      // Unterprojekte ruhen mit ihrem Elter (s. projectTree.ts): Sie stehen hier unter ihm und kommen
+      // mit ihm zurück. Selbst archivierte stehen ohnehin als eigene Zeile da.
+      for (const k of all.filter((x) => x.parent === it.path && !x.archived).sort((a, b) => a.name.localeCompare(b.name, "de"))) restingRow(list, ctx, k);
+    }
     return;
   }
 
   const sec: NavSection = isAreaSection ? "areas" : "projects";
   sortControl(root, plugin, sec);
-  const items = plugin.sortProjItems(sec, active.filter((p) => p.type === wantType));
-  if (!items.length) { root.createEl("p", { cls: "bt-empty", text: t(isAreaSection ? "manage_empty_areas" : "manage_empty_projects") }); return; }
+  // Baum wie in der Seitenleiste: oberste Einträge, darunter eingerückt ihre Unterprojekte – auch
+  // unter einem Bereich (sie sind Projekte, stehen aber bei ihm, nicht im Projekte-Tab).
+  const tops = plugin.sortProjItems(sec, active.filter((p) => p.type === wantType && p.parent === null));
+  if (!tops.length) { root.createEl("p", { cls: "bt-empty", text: t(isAreaSection ? "manage_empty_areas" : "manage_empty_projects") }); return; }
   const manual = plugin.navSortMode(sec) === "manual";
+  const kidsManual = plugin.navSortMode("projects") === "manual";
   const list = root.createDiv({ cls: "bt-manage-list" });
-  items.forEach((it) => activeRow(list, ctx, it, redraw, manual ? sec : undefined));
+  // Gezogen werden nur Geschwister; gespeichert wird per reorderVisible, das genau diese Schlüssel
+  // neu setzt – die der anderen Ebene behalten so ihren Platz.
+  const mergeTop = (keys: string[]): void => void plugin.reorderVisible(sec, keys);
+  const mergeKids = (keys: string[]): void => void plugin.ensureManualSort("projects").then(() => plugin.reorderVisible("projects", keys));
+  for (const it of tops) {
+    const kids = plugin.sortProjItems("projects", active.filter((x) => x.parent === it.path));
+    if (!kids.length) { activeRow(list, ctx, it, redraw, manual ? sec : undefined, { persist: mergeTop }); continue; }
+    const group = list.createDiv({ cls: "bt-manage-group" });
+    activeRow(list, ctx, it, redraw, manual ? sec : undefined, { host: group, unit: group, persist: mergeTop });
+    const sub = group.createDiv({ cls: "bt-manage-sub" });
+    for (const k of kids) activeRow(sub, ctx, k, redraw, kidsManual ? "projects" : undefined, { sub: true, persist: mergeKids });
+  }
 }
+
+/** Wo eine Zeile hinkommt und wie sie beim Umsortieren mitspielt (s. reorderHandle). */
+interface RowPlace { host?: HTMLElement; unit?: HTMLElement; persist?: (keys: string[]) => void; sub?: boolean }
 
 /** „+ Neu"-Zeile: Button, der sich beim Klick in ein Eingabefeld verwandelt (Enter = anlegen). */
 export function addRow(parent: HTMLElement, label: string, placeholder: string, onSubmit: (v: string) => Promise<unknown>, redraw: () => void): void {
@@ -252,10 +280,10 @@ function rowMenu(actions: HTMLElement, plugin: BeautyTasksPlugin, it: ProjItem):
   };
 }
 
-function activeRow(list: HTMLElement, ctx: PageCtx, it: ProjItem, redraw: () => void, reorderSec?: NavSection): void {
+function activeRow(list: HTMLElement, ctx: PageCtx, it: ProjItem, redraw: () => void, reorderSec?: NavSection, place: RowPlace = {}): void {
   const plugin = ctx.plugin;
-  const row = list.createDiv({ cls: "bt-manage-row" });
-  if (reorderSec) reorderHandle(row, list, plugin, reorderSec, it.path);
+  const row = (place.host ?? list).createDiv({ cls: "bt-manage-row" + (place.sub ? " is-sub" : "") });
+  if (reorderSec) reorderHandle(row, list, plugin, reorderSec, it.path, place.unit, place.persist);
   const isArea = it.type === "area";
 
   colorDot(row, plugin, it.color, it.path, isArea ? "var(--bt-nav-area)" : "var(--bt-nav-project)", (c) => void plugin.setProjectColor(it.path, c));
@@ -282,6 +310,14 @@ function archiveRow(list: HTMLElement, ctx: PageCtx, it: ProjItem, redraw: () =>
   const actions = row.createDiv({ cls: "bt-manage-actions" });
   iconBtn(actions, "archive-restore", t("btn_restore"), () => void plugin.archiveProject(it.path, false));
   iconBtn(actions, "trash-2", t("btn_delete_forever"), () => plugin.confirmDeleteProject(it.path, it.name, redraw));
+}
+
+/** Unterprojekt eines archivierten Elters: nur ansehen – es ruht mit ihm und kommt mit ihm zurück. */
+function restingRow(list: HTMLElement, ctx: PageCtx, it: ProjItem): void {
+  const row = list.createDiv({ cls: "bt-manage-row is-archived is-sub" });
+  const name = row.createSpan({ cls: "bt-manage-name", text: it.name });
+  name.onclick = () => ctx.open({ kind: "project", key: it.path });
+  row.createSpan({ cls: "bt-manage-count", text: t("subp_resting") });
 }
 
 function labelRow(list: HTMLElement, ctx: PageCtx, l: { name: string; count: number }, redraw: () => void, reorderSec?: NavSection): void {

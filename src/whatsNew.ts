@@ -15,10 +15,11 @@ export class WhatsNewModal extends Modal {
     contentEl.createDiv({ cls: "bt-wn-eyebrow", text: this.plugin.manifest.name + " " + this.plugin.manifest.version });
     contentEl.createEl("h2", { cls: "bt-wn-title", text: t("whatsnew_title") });
 
-    // Harmony Tasks 1.0: was der Fork gegenüber BeautyTasks 1.46 mitbringt. Wer von BeautyTasks
-    // umzieht und seine data.json mitnimmt, sieht den Dialog einmal (1.46 -> 1.0 ist ein
-    // Minor-Wechsel) – genau dann ist diese Liste die richtige.
+    // Harmony Tasks: was der Fork gegenüber BeautyTasks 1.46 mitbringt, das Neueste zuerst. Wer
+    // von BeautyTasks umzieht und seine data.json mitnimmt, sieht den Dialog einmal (1.46 -> 1.x ist
+    // ein Minor-Wechsel) – dann gehört alles dazu; wer von 1.0 kommt, liest oben, was neu ist.
     const items: Highlight[] = [
+      { icon: "folder-tree", title: t("wn_ht_subp_t"), desc: t("wn_ht_subp_d") },
       { icon: "list-checks", title: t("wn_ht_checklist_t"), desc: t("wn_ht_checklist_d") },
       { icon: "layout-list", title: t("wn_ht_sections_t"), desc: t("wn_ht_sections_d") },
       { icon: "gauge", title: t("wn_ht_overview_t"), desc: t("wn_ht_overview_d") },

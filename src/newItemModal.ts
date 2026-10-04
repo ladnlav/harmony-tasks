@@ -3,7 +3,7 @@
 // (Name/Farbe/Sichtbarkeit ändern). Farb-Swatches inline (siehe colorSwatches).
 import { Modal, Notice, setIcon } from "obsidian";
 import type BeautyTasksPlugin from "./main";
-import { normalizeLabel } from "./taskService";
+import { normalizeLabel, listProjectsAndAreas, nestProjects, projectItem } from "./taskService";
 import { buildSwatchRow } from "./colorSwatches";
 import { ConfirmModal } from "./confirmModal";
 import { t } from "./i18n";
@@ -14,6 +14,8 @@ export type NewItemKind = "project" | "area" | "label";
 export type EditFocus = "name" | "description";
 /** Referenz auf einen bestehenden Eintrag (Bearbeiten). key = Notiz-Pfad (Projekt/Bereich) bzw. Label-Name. */
 export interface EditRef { key: string; name: string; color: string | null; visible: boolean; description?: string; }
+/** Vorgaben beim Anlegen: `parent` = Pfad des Elters (Unterprojekt anlegen). */
+export interface NewItemOpts { parent?: string | null; }
 
 const ICON: Record<NewItemKind, string> = { project: "folder", area: "circle", label: "hash" };
 const TITLE: Record<NewItemKind, string> = { project: "new_project_title", area: "new_area_title", label: "new_label_title" };
@@ -30,10 +32,12 @@ export class NewItemModal extends Modal {
   private previewIc!: HTMLElement;
   private previewNm!: HTMLElement;
   private descInput: HTMLTextAreaElement | null = null;
+  private parent: string | null;   // Elter (Pfad) beim Anlegen eines Projekts, null = oberste Ebene
 
   constructor(private plugin: BeautyTasksPlugin, private kind: NewItemKind, private edit?: EditRef,
-              private focusField: EditFocus = "name") {
+              private focusField: EditFocus = "name", opts: NewItemOpts = {}) {
     super(plugin.app);
+    this.parent = opts.parent ?? null;
     this.name = edit?.name ?? "";
     this.description = edit?.description ?? "";
     this.color = edit?.color ?? null;
@@ -68,6 +72,10 @@ export class NewItemModal extends Modal {
       desc.oninput = () => { this.description = desc.value; };
       this.descInput = desc;
     }
+
+    // Elter – nur beim ANLEGEN eines Projekts. Umhängen bestehender Projekte läuft über
+    // „Verschieben nach ▸" im Kontextmenü (dort sind die Regeln für Kinder schon geprüft).
+    if (!this.edit && this.kind === "project") this.parentField(contentEl);
 
     // Sichtbarkeit in der Seitenleiste (Schalter)
     const visRow = contentEl.createDiv({ cls: "bt-new-row" });
@@ -128,8 +136,32 @@ export class NewItemModal extends Modal {
 
   onClose(): void { this.contentEl.empty(); }
 
+  /** Auswahl „Gehört zu": keine (oberste Ebene), ein Bereich oder ein oberstes Projekt. */
+  private parentField(contentEl: HTMLElement): void {
+    const { areas, projects } = nestProjects(listProjectsAndAreas(this.app));
+    const ziele = [...areas, ...projects].filter((e) => e.depth === 0).map((e) => e.item);
+    if (!ziele.length) return;
+    const field = contentEl.createDiv({ cls: "bt-new-field" });
+    field.createEl("label", { text: t("subp_parent") });
+    const sel = field.createEl("select", { cls: "dropdown bt-new-parent" });
+    sel.createEl("option", { text: t("subp_parent_none"), attr: { value: "" } });
+    const group = (label: string, type: "area" | "project"): void => {
+      const items = ziele.filter((z) => z.type === type);
+      if (!items.length) return;
+      const og = sel.createEl("optgroup", { attr: { label } });
+      for (const z of items) og.createEl("option", { text: z.name, attr: { value: z.path } });
+    };
+    group(t("group_area"), "area");
+    group(t("group_project"), "project");
+    // Vorgabe nur übernehmen, wenn sie gültig ist (oberster Eintrag) – sonst oberste Ebene.
+    if (this.parent && !ziele.some((z) => z.path === this.parent)) this.parent = null;
+    sel.value = this.parent ?? "";
+    sel.onchange = () => { this.parent = sel.value || null; this.updatePreview(); };
+  }
+
   private updatePreview(): void {
-    this.previewNm.setText(this.name.trim() || t(PH[this.kind]));
+    const elter = this.parent ? projectItem(this.app, this.parent)?.name : null;
+    this.previewNm.setText((elter ? elter + " › " : "") + (this.name.trim() || t(PH[this.kind])));
     this.previewIc.style.color = this.color ?? "var(--text-muted)";
   }
 
@@ -164,7 +196,7 @@ export class NewItemModal extends Modal {
         if (this.color) await this.plugin.setLabelColor(nu, this.color);
       }
     } else {
-      await this.plugin.createProject(name, this.kind === "area", this.color, !this.visible, this.description);
+      await this.plugin.createProject(name, this.kind === "area", this.color, !this.visible, this.description, this.kind === "project" ? this.parent : null);
     }
   }
 

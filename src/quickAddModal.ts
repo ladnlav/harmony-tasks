@@ -9,6 +9,7 @@ import type BeautyTasksPlugin from "./main";
 import { Priority, TaskStatus } from "./types";
 import { applyQuickEntry, emptyQuickEntryState, escapeTriggers, QuickEntryState } from "./quickEntry";
 import { createTaskNote, listProjectsAndAreas, knownProjectNames, isInboxLink } from "./taskService";
+import { projectPickerGroups } from "./projectPicker";
 import { t, projectDisplayName } from "./i18n";
 import { tip } from "./tooltip";
 import { todayStr } from "./format";
@@ -210,17 +211,10 @@ export class QuickAddModal extends Modal {
   private openProject(anchor: HTMLElement): void {
     openPopover(anchor, (pop, close) => {
       pop.addClass("bt-picker");
-      const { bereiche, projekte } = listProjectsAndAreas(this.app);
       const pick = (name: string | null) => { this.f.project = name; this.nl.project = null; this.renderProjekt(); close(); };
       // Eingang = kein Projekt (Auswahl leert das Projekt-Feld).
       popRow(pop, "inbox", t("nav_inbox"), () => pick(null), isInboxLink(this.f.project));
-      const group = (title: string, items: { name: string; icon: string; color: string | null }[]) => {
-        if (!items.length) return;
-        pop.createDiv({ cls: "bt-pop-head", text: title });
-        for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), this.f.project === it.name, it.color ?? undefined);
-      };
-      group(t("group_area"), bereiche);
-      group(t("group_project"), projekte);
+      projectPickerGroups(pop, this.app, (it) => popRow(pop, it.icon, it.name, () => pick(it.name), this.f.project === it.name, it.color ?? undefined));
     });
   }
 

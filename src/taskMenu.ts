@@ -11,7 +11,8 @@ import { Task } from "./types";
 import { openPopover, openPopoverAt, popRow } from "./popover";
 import { openDatePicker, quickDates } from "./datePicker";
 import { CHIPS, PRIOS, PRIO_KEY, ChipHost } from "./chips";
-import { listProjectsAndAreas, isInboxLink, copyTaskLink, openTaskNote, ProjItem, baseName, INBOX_KEY, projectSections } from "./taskService";
+import { listProjectsAndAreas, isInboxLink, copyTaskLink, openTaskNote, baseName, INBOX_KEY, projectSections } from "./taskService";
+import { projectPickerGroups } from "./projectPicker";
 import { openSectionPicker } from "./sectionView";
 import { ConfirmModal } from "./confirmModal";
 import { isTrashed } from "./statuses";
@@ -47,19 +48,12 @@ function openReminderEditor(plugin: BeautyTasksPlugin, task: Task, anchor: HTMLE
 /** Projekt-Picker zum VERSCHIEBEN (ohne Neuanlage-Zeilen): Eingang + Bereiche + Projekte,
  *  aktueller Eintrag markiert. Ein Klick schreibt das Projekt und schließt Picker UND Menü. */
 function openMovePicker(plugin: BeautyTasksPlugin, task: Task, anchor: HTMLElement, done: () => void): void {
-  const { bereiche, projekte } = listProjectsAndAreas(plugin.app);
   const cur = task.project && !isInboxLink(task.project) ? baseName(task.project) : null;
   openPopover(anchor, (pop, close) => {
     pop.addClass("bt-picker");
     const pick = (name: string | null): void => { close(); done(); if (name !== cur) void plugin.setTaskProject(task, name); };
     popRow(pop, "inbox", t("nav_inbox"), () => pick(null), cur === null);
-    const group = (title: string, items: ProjItem[]): void => {
-      if (!items.length) return;
-      pop.createDiv({ cls: "bt-pop-head", text: title });
-      for (const it of items) popRow(pop, it.icon, it.name, () => pick(it.name), cur === it.name, it.color ?? undefined);
-    };
-    group(t("group_area"), bereiche);
-    group(t("group_project"), projekte);
+    projectPickerGroups(pop, plugin.app, (it) => popRow(pop, it.icon, it.name, () => pick(it.name), cur === it.name, it.color ?? undefined));
   });
 }
 

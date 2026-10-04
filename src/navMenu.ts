@@ -8,7 +8,7 @@ import { NavSection } from "./types";
 import { EditFocus, NewItemModal } from "./newItemModal";
 import { FilterModal } from "./filterModal";
 import { ConfirmModal, PromptModal } from "./confirmModal";
-import { listManaged } from "./taskService";
+import { listManaged, projectItem, parentOptions } from "./taskService";
 import { listFilters } from "./filterService";
 import { ApplyTemplateModal, promptNewTemplate } from "./templateModal";
 import { TaskModal } from "./taskModal";
@@ -189,6 +189,11 @@ export function buildItemMenu(menu: Menu, plugin: BeautyTasksPlugin, item: NavMe
       .onClick(() => createSection(plugin, item.key)));
   }
 
+  // — Unterprojekte — (zwei Ebenen, s. projectTree.ts): Ein oberstes Projekt oder ein Bereich nimmt
+  // Unterprojekte auf; ein Projekt ohne eigene Kinder lässt sich unter ein anderes hängen oder
+  // wieder nach oben holen.
+  if (isProjLike) addSubprojectItems(menu, plugin, item.key);
+
   // — Als Vorlage speichern — (nur Projekte/Bereiche; Labels und Filter haben keine Aufgaben,
   // die man mitnehmen könnte). Nimmt das Projekt samt aller Aufgabenbäume auf.
   if (isProjLike) {
@@ -243,6 +248,30 @@ export function buildItemMenu(menu: Menu, plugin: BeautyTasksPlugin, item: NavMe
         { title: t("confirm_delete_title", item.name), message: t("confirm_delete_body") },
         () => void deleteItem(plugin, item)).open();
     }));
+}
+
+/** „Unterprojekt hinzufügen" und „Verschieben nach ▸" für ein Projekt/einen Bereich. */
+function addSubprojectItems(menu: Menu, plugin: BeautyTasksPlugin, path: string): void {
+  const me = projectItem(plugin.app, path);
+  if (!me || me.inArchive) return;
+  if (me.parent === null) {
+    menu.addItem((m) => m.setSection("bt-edit").setTitle(t("subp_add")).setIcon("folder-plus")
+      .onClick(() => new NewItemModal(plugin, "project", undefined, "name", { parent: me.path }).open()));
+  }
+  const ziele = me.type === "project" ? parentOptions(plugin.app, me.path) : [];
+  if (!ziele.length && !me.parent) return;
+  menu.addItem((m) => {
+    m.setSection("bt-edit").setTitle(t("subp_move")).setIcon("folder-input");
+    const sub = m.setSubmenu();
+    if (me.parent) {
+      sub.addItem((x) => x.setTitle(t("subp_move_top")).setIcon("arrow-up-to-line")
+        .onClick(() => void plugin.setProjectParent(me.path, null)));
+    }
+    for (const z of ziele) {
+      sub.addItem((x) => x.setTitle(z.name).setIcon(z.icon).setChecked(z.path === me.parent)
+        .onClick(() => { if (z.path !== me.parent) void plugin.setProjectParent(me.path, z.path); }));
+    }
+  });
 }
 
 /** Ausgeblendete Einträge einer Sektion (Schlüssel + Anzeigename). */

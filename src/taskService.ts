@@ -3,6 +3,7 @@ import { BeautyTasksSettings, ChecklistItem, Priority, Task, TaskStatus } from "
 import type { ShiftedDates } from "./templatePlan";
 import { serializeChecklist } from "./checklist";
 import { SectionDef, readSections, writeSections } from "./sections";
+import { linkTree, parentKeyOf, childrenOf, flattenTree, parentCandidates } from "./projectTree";
 import { combineDT, localStamp } from "./format";
 import { firstOpenStatus, isDone, isTrashed } from "./statuses";
 import { titleKey, fmTitle, findH1Line, replaceHeadingLine, renameHeadingLine, newTaskBody } from "./taskTitle";
@@ -356,6 +357,12 @@ export interface ProjItem {
   type: "project" | "area"; hidden: boolean; archived: boolean;
   description: string;   // kurze Beschreibung aus dem Frontmatter (Body bleibt dem Nutzer)
   sections: SectionDef[];   // Abschnitte (Frontmatter `sections`, s. sections.ts)
+  /** Roh-Verweis `parent` aus dem Frontmatter (kleingeschriebener Basename), s. projectTree.ts. */
+  parentKey: string | null;
+  /** Wirksamer Elter (Pfad) – null = oberste Ebene. Unterprojekte gibt es genau eine Ebene tief. */
+  parent: string | null;
+  /** Selbst archiviert ODER unter einem archivierten Elter: der ganze Zweig ruht. */
+  inArchive: boolean;
 }
 
 const byName = (a: ProjItem, b: ProjItem) => a.name.localeCompare(b.name, "de");
@@ -401,8 +408,8 @@ export const isInboxLink = (project: string | null | undefined): boolean =>
  *  Der Durchlauf ist gemerkt (s. ScanCache): Er geht über JEDE Notiz des Vaults, liefert aber
  *  solange dasselbe, bis sich eine Projekt-/Bereichsnotiz ändert. Die Seitenleiste fragt ihn
  *  bei jeder Index-Meldung – bei jedem Häkchen also, wo sich hier nichts geändert haben kann. */
-const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
-  app.vault.getMarkdownFiles().flatMap((f) => {
+const projScan = new ScanCache<ProjItem>(isProjectType, (app) => withTree(
+  app.vault.getMarkdownFiles().flatMap((f): ProjItem[] => {
     const fm = app.metadataCache.getFileCache(f)?.frontmatter;
     const ty: unknown = fm?.[fieldKey("type")];
     const type: "project" | "area" | null = ty === "area" ? "area" : ty === "project" ? "project" : null;
@@ -416,10 +423,79 @@ const projScan = new ScanCache<ProjItem>(isProjectType, (app) =>
       description: typeof fm?.description === "string" ? fm.description : "",
       hidden: !!fm?.nav_hidden, archived: fm?.status === "archived",
       sections: readSections(fm?.sections),
+      parentKey: parentKeyOf(fm?.parent), parent: null, inArchive: false,
     }];
-  }));
+  })));
+
+/** Eltern verknüpfen (s. projectTree.ts) – einmal je Durchlauf, das Ergebnis ist mit gemerkt. */
+function withTree(items: ProjItem[]): ProjItem[] {
+  const links = linkTree(items);
+  for (const it of items) {
+    const l = links.get(it.path);
+    if (l) { it.parent = l.parent; it.inArchive = l.inArchive; }
+  }
+  return items;
+}
 
 function allProjItems(app: App): ProjItem[] { return projScan.get(app); }
+
+/** ALLE Projekte und Bereiche – auch archivierte und ruhende Unterprojekte. Für Operationen, die
+ *  Verweise nachziehen (Umbenennen, Löschen); Anzeigen nehmen listProjectsAndAreas/listManaged. */
+export function allProjects(app: App): ProjItem[] { return allProjItems(app); }
+
+/** Ein Projekt/Bereich (auch archiviert) über seinen Pfad. */
+export function projectItem(app: App, path: string | null | undefined): ProjItem | null {
+  return path ? allProjItems(app).find((p) => p.path === path) ?? null : null;
+}
+
+/** Unterprojekte eines Projekts/Bereichs, alphabetisch – ohne selbst archivierte. Ausgeblendete
+ *  bleiben drin: „nicht in der Seitenleiste" heißt nicht „gibt es nicht". */
+export function projectChildren(app: App, path: string): ProjItem[] {
+  return childrenOf(allProjItems(app), path).filter((p) => !p.archived).sort(byName);
+}
+
+/** Der Zweig eines Projekts: es selbst und seine (nicht archivierten) Unterprojekte. Basis für den
+ *  Überblick, der über den ganzen Zweig zählt. */
+export function projectBranch(app: App, path: string): string[] {
+  return [path, ...projectChildren(app, path).map((p) => p.path)];
+}
+
+/** Mögliche Eltern für ein Projekt („Verschieben nach …"): oberste, nicht ruhende Projekte und
+ *  Bereiche – Bereiche zuerst, je alphabetisch. Leer, wenn es selbst Kinder hat oder ein Bereich ist. */
+export function parentOptions(app: App, path: string): ProjItem[] {
+  const all = allProjItems(app);
+  const child = all.find((p) => p.path === path);
+  if (!child) return [];
+  return parentCandidates(all.filter((p) => !p.inArchive && !isInbox(p)), child)
+    .sort((a, b) => (a.type === b.type ? byName(a, b) : a.type === "area" ? -1 : 1));
+}
+
+/** Bereiche und Projekte als Baum für Picker: jeder Bereich mit seinen Unterprojekten, dann die
+ *  obersten Projekte mit ihren. Alphabetisch auf jeder Ebene (die Seitenleiste sortiert selbst). */
+export function nestProjects(pa: ProjLists): { areas: { item: ProjItem; depth: 0 | 1 }[]; projects: { item: ProjItem; depth: 0 | 1 }[] } {
+  const all = [...pa.bereiche, ...pa.projekte];
+  const kids = (p: ProjItem): ProjItem[] => childrenOf(all, p.path).sort(byName);
+  return {
+    areas: flattenTree(pa.bereiche, kids),
+    projects: flattenTree(pa.projekte.filter((p) => p.parent === null), kids),
+  };
+}
+
+/** Elter eines Projekts setzen (`parent: "[[Name]]"`) oder entfernen (null). Hängt der neue Elter
+ *  selbst noch mit einem unwirksamen Verweis irgendwo (dritte Ebene, Ring), wird der dort entfernt –
+ *  sonst griffe die Zuordnung nicht (s. projectTree.linkTree). */
+export async function setProjectParent(app: App, path: string, parentPath: string | null): Promise<void> {
+  const file = app.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) return;
+  const parent = parentPath ? app.vault.getAbstractFileByPath(parentPath) : null;
+  if (parentPath && !(parent instanceof TFile)) return;
+  if (parent instanceof TFile && allProjItems(app).find((p) => p.path === parent.path)?.parentKey) {
+    await app.fileManager.processFrontMatter(parent, (fm: Record<string, unknown>) => { delete fm.parent; });
+  }
+  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+    if (parent instanceof TFile) fm.parent = "[[" + parent.basename + "]]"; else delete fm.parent;
+  });
+}
 
 /** Abschnitte eines Projekts/Bereichs (Pfad). Leer, wenn es keine hat oder kein Projekt ist. */
 export function projectSections(app: App, path: string | null | undefined): SectionDef[] {
@@ -445,7 +521,7 @@ export async function setProjectSections(app: App, path: string, defs: readonly 
 /** Basenamen (lowercase) aller archivierten Projekte/Bereiche – zum Ausblenden ihrer
  *  Aufgaben aus Sammelansichten (Heute, Demnächst, Labels, Projekt-Boards …). */
 export function archivedProjectNames(app: App): Set<string> {
-  return new Set(allProjItems(app).filter((p) => p.archived).map((p) => p.name.toLowerCase()));
+  return new Set(allProjItems(app).filter((p) => p.inArchive).map((p) => p.name.toLowerCase()));
 }
 
 /** Ergebnis von listProjectsAndAreas – benannt, weil es als Ganzes durchgereicht wird
@@ -453,7 +529,7 @@ export function archivedProjectNames(app: App): Set<string> {
 export interface ProjLists { bereiche: ProjItem[]; projekte: ProjItem[] }
 
 export function listProjectsAndAreas(app: App): ProjLists {
-  const all = allProjItems(app).filter((p) => !p.archived);
+  const all = allProjItems(app).filter((p) => !p.inArchive);   // auch Unterprojekte archivierter Eltern
   const bereiche = all.filter((p) => p.type === "area").sort(byName);
   // Eine evtl. noch vorhandene (alte) Inbox-Notiz NIE als Projekt anbieten – der Eingang ist
   // eine eingebaute Ansicht ohne Notiz. Die Migration räumt die Notiz ohnehin weg.
@@ -473,7 +549,9 @@ export function knownProjectNames(app: App): string[] {
 /** Verwaltung: aktive (Bereiche + Projekte, ohne Eingang) und archivierte Einträge. */
 export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[] } {
   const all = allProjItems(app).filter((p) => !isInbox(p));
-  const active = all.filter((p) => !p.archived)
+  // Unterprojekte eines archivierten Elters stehen in KEINER der beiden Listen: Sie ruhen mit ihm
+  // und erscheinen in der Archivübersicht unter ihm (s. manageView), nicht als eigene Zeile.
+  const active = all.filter((p) => !p.inArchive)
     .sort((a, b) => (a.type === b.type ? byName(a, b) : a.type === "area" ? -1 : 1));   // Bereiche zuerst
   const archived = all.filter((p) => p.archived).sort(byName);
   return { active, archived };
@@ -481,14 +559,14 @@ export function listManaged(app: App): { active: ProjItem[]; archived: ProjItem[
 
 /** Neues Projekt (oder mit asArea=true direkt einen Bereich) anlegen; gibt den Basenamen
  *  zurück. Bereiche entstehen sonst per Umwandeln eines Projekts (setProjectType). */
-export async function createProjectNote(app: App, settings: BeautyTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", sections: readonly SectionDef[] = []): Promise<string> {
+export async function createProjectNote(app: App, settings: BeautyTasksSettings, name: string, asArea = false, color: string | null = null, hidden = false, description = "", sections: readonly SectionDef[] = [], parent: string | null = null): Promise<string> {
   const folder = settings.projectsFolder;
   await ensureFolder(app, folder);
   const base = slugify(name);
   let dest = normalizePath(folder + "/" + base + ".md");
   let n = 2;
   while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(folder + "/" + base + " " + n + ".md"); n++; if (n > 200) break; }
-  const fm = buildFrontmatter({ [fieldKey("type")]: asArea ? "area" : "project", id: newId("p"), status: "active", color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: todayIso(), sections: sections.length ? writeSections(sections) : undefined });
+  const fm = buildFrontmatter({ [fieldKey("type")]: asArea ? "area" : "project", id: newId("p"), status: "active", color: color ?? undefined, description: description.trim() || undefined, nav_hidden: hidden ? true : undefined, created: todayIso(), sections: sections.length ? writeSections(sections) : undefined, parent: parent && !asArea ? "[[" + parent + "]]" : undefined });
   // Kein „# Name" mehr im Body: Der Name kommt aus dem Dateinamen, die Überschrift wäre redundant –
   // und der Body gehört ab hier vollständig dem Nutzer (s. „Projektnotiz öffnen").
   await app.vault.create(dest, fm + "\n");
@@ -500,7 +578,10 @@ export async function createProjectNote(app: App, settings: BeautyTasksSettings,
 export async function setProjectType(app: App, path: string, toArea: boolean): Promise<void> {
   const file = app.vault.getAbstractFileByPath(path);
   if (!(file instanceof TFile)) return;
-  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => { fm[fieldKey("type")] = toArea ? "area" : "project"; });
+  await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+    fm[fieldKey("type")] = toArea ? "area" : "project";
+    if (toArea) delete fm.parent;   // Bereiche sind nie Unterprojekte (s. projectTree.ts)
+  });
 }
 
 /** Ist die Notiz an diesem Pfad ein Bereich (type: area)? */
