@@ -317,9 +317,9 @@ export async function writeExportFile(plugin: BeautyTasksPlugin): Promise<string
   const d = new Date();
   const z = (n: number): string => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
-  let dest = normalizePath(`${base}/beautytasks-export-${stamp}.json`);
+  let dest = normalizePath(`${base}/harmony-tasks-export-${stamp}.json`);
   let n = 2;
-  while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(`${base}/beautytasks-export-${stamp} ${n}.json`); n++; if (n > 200) break; }
+  while (app.vault.getAbstractFileByPath(dest)) { dest = normalizePath(`${base}/harmony-tasks-export-${stamp} ${n}.json`); n++; if (n > 200) break; }
   await app.vault.create(dest, JSON.stringify(data, null, 2));
   return dest;
 }

@@ -174,7 +174,7 @@ export default class BeautyTasksPlugin extends Plugin {
     // Bei „Seitenvorschau" als Quelle anmelden: erscheint dort in den Einstellungen und folgt der
     // Strg-Vorgabe des Nutzers. defaultMod:false, weil das Icon der ausdrückliche Auslöser ist –
     // ein Strg-Zwang wäre hier unnötige Reibung (auf einem Wikilink im Text gilt weiter die Vorgabe).
-    this.registerHoverLinkSource("beautytasks", { display: "BeautyTasks", defaultMod: false });
+    this.registerHoverLinkSource(this.manifest.id, { display: this.manifest.name, defaultMod: false });
 
     this.addRibbonIcon("check-circle", t("ribbon_open"), () => void this.openBeautyTasks());
     this.addSettingTab(new BeautyTasksSettingTab(this.app, this));
@@ -2203,7 +2203,7 @@ export default class BeautyTasksPlugin extends Plugin {
     const body = task.title;
     try {
       if (typeof Notification !== "undefined" && !Platform.isMobile) {
-        const n = new Notification("BeautyTasks", { body });
+        const n = new Notification(this.manifest.name, { body });
         n.onclick = () => { window.focus(); this.openEditTask(task); };
       }
     } catch { /* Notification je nach Umgebung nicht verfügbar -> Notice reicht */ }

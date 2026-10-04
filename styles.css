@@ -3,10 +3,12 @@
 
 /* Style-Settings-Integration (optional): Wer das „Style Settings"-Plugin hat, bekommt
    Farbwähler für die Semantik-Farben. Ohne das Plugin gelten einfach die Defaults unten.
-   Die IDs entsprechen den --bt-*-Variablen. */
+   Die IDs entsprechen den --bt-*-Variablen.
+   `id: beautytasks` bleibt im Fork absichtlich stehen: Style Settings speichert die Wahl des Nutzers
+   unter dieser Id – so überleben eigene Farben den Umzug von BeautyTasks. */
 /* @settings
 
-name: BeautyTasks
+name: Harmony Tasks
 id: beautytasks
 settings:
   - id: bt-monochrome
@@ -16,7 +18,7 @@ settings:
     default: false
   - id: bt-colors-heading
     title: Colors
-    description: Semantic colors used across BeautyTasks (these also drive icon colors).
+    description: Semantic colors used across Harmony Tasks (these also drive icon colors).
     type: heading
     level: 2
     collapsed: true

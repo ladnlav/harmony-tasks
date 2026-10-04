@@ -86,7 +86,7 @@ export function resetSubtaskToggles(ctx: PageCtx): void {
   for (const k of [...subtaskToggle.keys()]) if (k.startsWith(prefix)) subtaskToggle.delete(k);
 }
 
-export const VIEW_PREFIX = "beautytasks-";
+export const VIEW_PREFIX = "harmony-tasks-";   // eigener Präfix im Fork – sonst kollidieren die View-Typen mit BeautyTasks
 export type ViewId = "heute" | "demnaechst" | "wiederkehrend" | "erledigt";
 export const VIEW_IDS: ViewId[] = ["heute", "demnaechst", "wiederkehrend", "erledigt"];
 export const VIEW_MAIN = VIEW_PREFIX + "main";             // Dashboard-Leaf; beliebig oft offen (je Tab eine Seite)
@@ -3085,7 +3085,7 @@ export class NavView extends ItemView {
   private unsubTpl: (() => void) | null = null;
   constructor(leaf: WorkspaceLeaf, private plugin: BeautyTasksPlugin) { super(leaf); }
   getViewType(): string { return VIEW_NAV; }
-  getDisplayText(): string { return "BeautyTasks"; }
+  getDisplayText(): string { return this.plugin.manifest.name; }
   getIcon(): string { return "check-circle"; }
   async onOpen(): Promise<void> {
     if (!this.unsub) this.unsub = this.plugin.index.subscribe(() => this.draw());

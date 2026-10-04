@@ -41,7 +41,13 @@ const API = "https://www.googleapis.com/calendar/v3";
 const SYNC_SOURCE = "beautytasks";
 const DEBOUNCE_MS = 2000;
 const POLL_MS = 5 * 60 * 1000;   // periodischer Pull, damit Google-Änderungen auch ohne lokale Edits kommen
-export const DEFAULT_CALENDAR_NAME = "BeautyTasks";
+export const DEFAULT_CALENDAR_NAME = "Harmony Tasks";
+/** Frühere Namen des eigenen Kalenders (Original-Plugin BeautyTasks). Beim SUCHEN zählen sie mit –
+ *  ein übernommener Vault benutzt seinen Kalender weiter, statt einen zweiten anzulegen. Angelegt
+ *  wird immer unter DEFAULT_CALENDAR_NAME. */
+const LEGACY_CALENDAR_NAMES = ["BeautyTasks"];
+export const isOwnCalendarName = (summary: string | undefined): boolean =>
+  summary === DEFAULT_CALENDAR_NAME || LEGACY_CALENDAR_NAMES.includes(summary ?? "");
 
 // ── Persistierte Sync-Einstellungen (Unter-Objekt von BeautyTasksSettings) ────
 /** Ein abgeglichener Stand pro Aufgabe. `s` = Push-Änderungserkennung;
@@ -307,9 +313,11 @@ export async function fetchAccountEmail(auth: GCalAuth): Promise<string | null> 
   return (cal?.id as string) ?? null;
 }
 
-/** Eigenen „BeautyTasks"-Kalender finden oder anlegen (kleiner Blast-Radius). */
+/** Eigenen Kalender finden oder anlegen (kleiner Blast-Radius). Der aktuelle Name hat Vorrang vor
+ *  einem früheren (LEGACY_CALENDAR_NAMES). */
 export async function ensureDefaultCalendar(auth: GCalAuth, timezone: string): Promise<string> {
-  const existing = (await listCalendars(auth)).find((c) => c.summary === DEFAULT_CALENDAR_NAME);
+  const cals = await listCalendars(auth);
+  const existing = cals.find((c) => c.summary === DEFAULT_CALENDAR_NAME) ?? cals.find((c) => isOwnCalendarName(c.summary));
   if (existing) return existing.id;
   const created = await api(auth, "POST", "/calendars", { summary: DEFAULT_CALENDAR_NAME, timeZone: timezone });
   return created?.id as string;

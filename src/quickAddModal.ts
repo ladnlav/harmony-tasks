@@ -190,7 +190,7 @@ export class QuickAddModal extends Modal {
       pop.addClass("bt-plus");
       const any = renderPlusChips(pop, host, anchor, close);
       if (any) pop.createDiv({ cls: "bt-plus-sep" });
-      popRow(pop, "sliders-horizontal", t("edit_task_actions"), () => { close(); openChipSettings(this.app); });
+      popRow(pop, "sliders-horizontal", t("edit_task_actions"), () => { close(); openChipSettings(this.app, this.plugin.manifest.id); });
     });
   }
 

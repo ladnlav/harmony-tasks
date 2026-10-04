@@ -292,7 +292,7 @@ export class TaskModal extends Modal {
     // (das Ruckeln). mouseenter feuert genau EINMAL beim Betreten und ignoriert die Kinder.
     btn.addEventListener("mouseenter", (e) => {
       this.app.workspace.trigger("hover-link", {
-        event: e, source: "beautytasks", hoverParent: this, targetEl: btn, linktext: file.path, sourcePath: file.path,
+        event: e, source: this.plugin.manifest.id, hoverParent: this, targetEl: btn, linktext: file.path, sourcePath: file.path,
       });
     });
     const open = (): void => { void this.app.workspace.getLeaf("tab").openFile(file); this.close(); };
@@ -461,7 +461,7 @@ export class TaskModal extends Modal {
         any = true;
       }
       if (any) pop.createDiv({ cls: "bt-plus-sep" });
-      popRow(pop, "sliders-horizontal", t("edit_task_actions"), () => { close(); openChipSettings(this.app); });
+      popRow(pop, "sliders-horizontal", t("edit_task_actions"), () => { close(); openChipSettings(this.app, this.plugin.manifest.id); });
     });
   }
 

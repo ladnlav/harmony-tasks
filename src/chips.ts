@@ -543,9 +543,10 @@ export function renderValueChip(bar: HTMLElement, host: ChipHost, c: ChipDef, se
   if (set) { const x = chip.createSpan({ cls: "bt-chip-x" }); setIcon(x, "x"); x.onclick = (e) => { e.stopPropagation(); c.clear(host); host.rerender(); }; }
 }
 
-/** Obsidian-Einstellungen beim BeautyTasks-Tab öffnen („Aufgabenaktionen bearbeiten"). */
-export function openChipSettings(app: App): void {
+/** Obsidian-Einstellungen beim Tab dieses Plugins öffnen („Aufgabenaktionen bearbeiten"). Die Id kommt
+ *  aus dem Manifest – im Fork heißt das Plugin anders als im Original. */
+export function openChipSettings(app: App, pluginId: string): void {
   const s = (app as unknown as { setting?: { open(): void; openTabById(id: string): void } }).setting;
   s?.open();
-  s?.openTabById("beautytasks");
+  s?.openTabById(pluginId);
 }

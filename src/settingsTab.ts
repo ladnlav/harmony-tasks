@@ -4,7 +4,7 @@ import { ChipId, ChipTier, ChipSurface, MetaColorKey, DEFAULT_SETTINGS } from ".
 import { CHIPS, chipsCompact, resolveChipOrder, chipTierOf } from "./chips";
 import { StartPageModal, listStartPages, startPageLabel } from "./startPagePicker";
 import { renderStatusEditor } from "./statusEditor";
-import { DEFAULT_CALENDAR_NAME, CalendarInfo } from "./gcalSync";
+import { isOwnCalendarName, CalendarInfo } from "./gcalSync";
 import { FieldId, FIELD_IDS, normalizeFieldName, allFieldNames } from "./fieldNames";
 import { PlanTabId, readPlanTabs, dailyNotesEnabled, forceListLeft } from "./planTabs";
 import { t } from "./i18n";
@@ -13,7 +13,7 @@ import { tip } from "./tooltip";
 const CHIP_TIERS: ChipTier[] = ["shown", "onValue", "hidden"];
 
 /** README-Abschnitt mit der Google-Kalender-Einrichtung (statt nur zur Console zu verlinken). */
-const GCAL_GUIDE_URL = "https://github.com/avnibilgin/BeautyTasks#google-calendar-sync";
+const GCAL_GUIDE_URL = "https://github.com/ladnlav/harmony-tasks#google-calendar-sync";
 
 /** Pointer-basiertes Ziehen einer Chip-Zeile ZWISCHEN den drei Tier-Zonen (Maus + Touch,
  *  Popout-sicher über row.ownerDocument). Beim Loslassen ruft onDrop() – der Aufrufer liest
@@ -548,7 +548,7 @@ export class BeautyTasksSettingTab extends PluginSettingTab {
           dd.onChange((v) => { g.calendarId = v; void p.saveSettings(); void p.gcalSync.syncNow(); });
         });
       // Tipp/Anlegen nur, wenn geprüft UND noch kein eigener BeautyTasks-Kalender existiert.
-      if (ok && !cals.some((c) => c.summary === DEFAULT_CALENDAR_NAME)) {
+      if (ok && !cals.some((c) => isOwnCalendarName(c.summary))) {
         new Setting(calHost).setName(t("gcal_tip_create")).setDesc(t("gcal_tip_create_desc"))
           .addButton((b) => b.setButtonText(t("gcal_create_calendar_btn")).setCta()
             .onClick(async () => {

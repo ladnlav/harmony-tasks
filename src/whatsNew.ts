@@ -12,20 +12,17 @@ export class WhatsNewModal extends Modal {
   onOpen(): void {
     const { contentEl, modalEl } = this;
     modalEl.addClass("bt-whatsnew");
-    contentEl.createDiv({ cls: "bt-wn-eyebrow", text: "BeautyTasks " + this.plugin.manifest.version });
+    contentEl.createDiv({ cls: "bt-wn-eyebrow", text: this.plugin.manifest.name + " " + this.plugin.manifest.version });
     contentEl.createEl("h2", { cls: "bt-wn-title", text: t("whatsnew_title") });
 
-    // Gezeigt wird, was seit dem LETZTEN Modal sichtbar dazugekommen ist. Die Link-
-    // Vervollständigung ist deshalb raus: Wer jetzt 1.46 sieht, hatte den Dialog bei 1.45.0.
-    //
-    // Der ZWEITE Eintrag ist der wichtigste, obwohl der erste die Überschrift trägt: Ohne ihn
-    // liest sich „Vorlagen" wie Duplizieren mit Zusatzschritten. Dass die Zeitabstände erhalten
-    // bleiben, ist der ganze Unterschied – und „merkt sich den Rhythmus, nicht den Kalender"
-    // sagt ihn in einem Satz.
+    // Harmony Tasks 1.0: was der Fork gegenüber BeautyTasks 1.46 mitbringt. Wer von BeautyTasks
+    // umzieht und seine data.json mitnimmt, sieht den Dialog einmal (1.46 -> 1.0 ist ein
+    // Minor-Wechsel) – genau dann ist diese Liste die richtige.
     const items: Highlight[] = [
-      { icon: "clipboard-list", title: t("wn_tpl_t"), desc: t("wn_tpl_d") },
-      { icon: "calendar-days", title: t("wn_tplwhen_t"), desc: t("wn_tplwhen_d") },
-      { icon: "list-plus", title: t("wn_navtidy_t"), desc: t("wn_navtidy_d") },
+      { icon: "list-checks", title: t("wn_ht_checklist_t"), desc: t("wn_ht_checklist_d") },
+      { icon: "layout-list", title: t("wn_ht_sections_t"), desc: t("wn_ht_sections_d") },
+      { icon: "gauge", title: t("wn_ht_overview_t"), desc: t("wn_ht_overview_d") },
+      { icon: "repeat", title: t("wn_ht_recur_t"), desc: t("wn_ht_recur_d") },
     ];
     const list = contentEl.createDiv({ cls: "bt-wn-list" });
     for (const it of items) {

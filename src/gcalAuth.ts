@@ -340,10 +340,10 @@ function sleep(ms: number): Promise<void> {
 /** Schlichte Abschluss-Seite im Browser nach dem Loopback-Redirect. */
 function loopbackPage(ok: boolean): string {
   const msg = ok
-    ? "✅ BeautyTasks ist jetzt mit Google Kalender verbunden."
+    ? "✅ Harmony Tasks ist jetzt mit Google Kalender verbunden."
     : "⚠️ Anmeldung fehlgeschlagen. Bitte in Obsidian erneut versuchen.";
   return `<!doctype html><html lang="de"><head><meta charset="utf-8">
-<title>BeautyTasks</title><style>
+<title>Harmony Tasks</title><style>
 body{font-family:system-ui,sans-serif;background:#1e1e1e;color:#eee;display:flex;
 min-height:100vh;align-items:center;justify-content:center;margin:0}
 div{max-width:28rem;text-align:center;line-height:1.5;padding:2rem}

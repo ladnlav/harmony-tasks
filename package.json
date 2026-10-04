@@ -1,7 +1,7 @@
 {
-  "name": "beautytasks",
-  "version": "1.46.3",
-  "description": "BeautyTasks – Obsidian task & project system (note per task, no plugin dependencies).",
+  "name": "harmony-tasks",
+  "version": "1.0.0",
+  "description": "Harmony Tasks – Obsidian task & project system (note per task, no plugin dependencies). Fork of BeautyTasks.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -9,8 +9,15 @@
     "lint": "eslint src/",
     "test": "vitest run"
   },
-  "author": "Avni Bilgin",
+  "author": "Nesterenko Vladislav",
+  "contributors": [
+    "Avni Bilgin (BeautyTasks)"
+  ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ladnlav/harmony-tasks.git"
+  },
   "devDependencies": {
     "@types/node": "^20",
     "@typescript-eslint/parser": "^8.62.1",
