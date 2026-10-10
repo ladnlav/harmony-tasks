@@ -148,6 +148,7 @@ export default class BeautyTasksPlugin extends Plugin {
       this.templates.build();   // eigener, ordner-gebundener Durchgang – siehe TEMPLATE_SCOPE
       this.renderAll();
       this.applyStartPage();   // wiederhergestellten Tab auf die eingestellte Startseite schicken
+      if (this.device.openOnStartup) await this.openOnStart();   // Einstellung je Gerät
       await this.runPendingMigrations();   // Einmal-Migrationen beim ersten Start nach dem Update
       this.scanReminders();   // Startlauf (fängt beim Öffnen kürzlich Verpasstes)
       this.seedGCalCacheIfEmpty();   // MUSS vor dem ersten Lauf stehen – sonst Massen-Push
@@ -396,6 +397,35 @@ export default class BeautyTasksPlugin extends Plugin {
    *  Öffentlich, weil der MainView-Konstruktor damit startet. */
   newTabStartPage(): PageRef {
     return newTabPage(this.settings.startPage, this.device.lastView, (p) => this.pageExists(p));
+  }
+
+  /** „Beim Start von Obsidian öffnen" – je Gerät (s. DeviceState.openOnStartup). */
+  openOnStartup(): boolean { return this.device.openOnStartup; }
+  setOpenOnStartup(on: boolean): void { this.device.openOnStartup = on; this.saveDevice(); }
+
+  /**
+   * Beim Start nach vorn holen: einen vorhandenen Dashboard-Tab zeigen, sonst einen mit der
+   * Startseite öffnen – wie das Band-Symbol, mit zwei Unterschieden:
+   *  – Die Seitenleiste wird nur ANGELEGT, nicht aufgeklappt. Auf dem Telefon ist sie eine
+   *    Schublade; beim Start soll sie nicht über dem Inhalt liegen.
+   *  – Gesucht wird über den View-Typ im Zustand des Leafs, nicht über `instanceof MainView`:
+   *    Obsidian lädt Hintergrund-Reiter verzögert, deren View gibt es noch nicht. Fragte man
+   *    die Instanz, entstünde neben dem wiederhergestellten Tab ein zweiter.
+   */
+  private async openOnStart(): Promise<void> {
+    const { workspace } = this.app;
+    if (!workspace.getLeavesOfType(VIEW_NAV).length) {
+      const left = workspace.getLeftLeaf(false);
+      if (left) await left.setViewState({ type: VIEW_NAV, active: false });
+    }
+    const tabs: WorkspaceLeaf[] = [];
+    workspace.iterateAllLeaves((leaf) => { if (leaf.getViewState().type === VIEW_MAIN) tabs.push(leaf); });
+    const tab = tabs.find((leaf) => leaf.getRoot() === workspace.rootSplit) ?? tabs[0];
+    if (!tab) { await this.openPage(this.newTabStartPage(), "tab"); return; }
+    await tab.loadIfDeferred();
+    workspace.setActiveLeaf(tab, { focus: true });
+    await workspace.revealLeaf(tab);
+    if (tab.view instanceof MainView) tab.view.drawIfDirty();
   }
 
   /** Beim Start: den aktiven BeautyTasks-Tab auf die eingestellte Seite schicken. Andere Tabs

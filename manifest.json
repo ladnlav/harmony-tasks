@@ -1,7 +1,7 @@
 {
   "id": "harmony-tasks",
   "name": "Harmony Tasks",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "minAppVersion": "1.8.7",
   "description": "Task and project manager built on Markdown — one note per task, with subprojects, checklists, project sections, flexible recurrence and optional Google Calendar sync.",
   "author": "Nesterenko Vladislav",

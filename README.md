@@ -192,6 +192,7 @@ Harmony Tasks is not in the community plugin directory. Install it with **BRAT**
 1. In Obsidian open *Settings → Community plugins → Browse*, install and enable **BRAT**.
 2. Open *Settings → BRAT → Add beta plugin*, enter `ladnlav/harmony-tasks` and confirm.
 3. Enable **Harmony Tasks** under *Community plugins*. BRAT keeps it up to date from the GitHub releases.
+4. Open it with the **check-circle** ribbon icon or the command **Harmony Tasks: Open Harmony Tasks**. On a phone the ribbon sits behind the menu button; to have it open by itself, turn on *Settings → Open when Obsidian starts* on that device.
 
 Manual alternative: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/ladnlav/harmony-tasks/releases/latest) into `<vault>/.obsidian/plugins/harmony-tasks/` and reload Obsidian.
 
@@ -449,6 +450,7 @@ Assign hotkeys to any of these under **Settings → Hotkeys**.
 - **Field names** — which frontmatter fields Harmony Tasks uses for `type` and `title` (see above).
 - **Language** — auto (follow Obsidian) or pick one of 10 languages (English, German, Spanish, Portuguese, French, Italian, Turkish, Russian, Simplified Chinese, Japanese).
 - **Start view** — which view opens by default (or the last used one).
+- **Open when Obsidian starts** — bring Harmony Tasks to the front on every start, or open it if it isn't open. Saved per device: on for the phone, off for the computer, for example.
 - **Natural-language parsing** — toggle date/label/priority detection in titles.
 - **Task actions (chips)** — show, hide and reorder the attribute chips, separately for quick add and the full editor.
 - **Statuses** — add, rename, reorder, recolor and re-icon your workflow statuses.

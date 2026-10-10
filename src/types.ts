@@ -251,6 +251,9 @@ export interface DeviceState {
   navCollapsed: Record<string, boolean>;  // ein-/ausgeklappte Nav-Abschnitte (labels/areas/projects)
   lastView: string;                       // zuletzt aktive Ansicht (nur für startView === "last")
   reminderLastScan: number;               // Epoch-ms des letzten gefeuerten Reminder-Scans
+  /** Beim Start von Obsidian öffnen. Bewusst JE GERÄT: Auf dem Telefon als Startbildschirm
+   *  gewollt, auf dem Desktop meist nicht – ein Sync über data.json glich beides an. */
+  openOnStartup: boolean;
 }
 
-export const DEFAULT_DEVICE_STATE: DeviceState = { navCollapsed: {}, lastView: "heute", reminderLastScan: 0 };
+export const DEFAULT_DEVICE_STATE: DeviceState = { navCollapsed: {}, lastView: "heute", reminderLastScan: 0, openOnStartup: false };

@@ -193,6 +193,11 @@ export class BeautyTasksSettingTab extends PluginSettingTab {
     };
     zeichneStart();
 
+    // Beim Start öffnen – eine GERÄTE-Einstellung (DeviceState, nicht data.json): auf dem Telefon
+    // als Startbildschirm, auf dem Desktop eher nicht. Der Sync darf das nicht angleichen.
+    new Setting(containerEl).setName(t("set_open_on_startup")).setDesc(t("set_open_on_startup_desc")).addToggle((tg) =>
+      tg.setValue(p.openOnStartup()).onChange((v) => p.setOpenOnStartup(v)));
+
     new Setting(containerEl).setName(t("set_nl")).setDesc(t("set_nl_desc")).addToggle((tg) =>
       tg.setValue(p.settings.parseNaturalLanguage).onChange(async (v) => { p.settings.parseNaturalLanguage = v; await p.saveSettings(); }));
 

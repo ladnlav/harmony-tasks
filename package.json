@@ -1,6 +1,6 @@
 {
   "name": "harmony-tasks",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Harmony Tasks – Obsidian task & project system (note per task, no plugin dependencies). Fork of BeautyTasks.",
   "main": "main.js",
   "scripts": {
